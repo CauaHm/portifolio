@@ -536,19 +536,450 @@ footer{position:relative;z-index:1;overflow:hidden;padding:0 0 2rem;}
 }
 
 /* ==========================================================================
-   Menu no celular
+   Altura dos blocos no celular
+   (o menu de tela cheia está na camada mobile, mais abaixo)
    ========================================================================== */
 @media (max-width:880px){
-  .nav-links{display:none;}
-  .menu-toggle{display:block;}
-  .nav-links.aberto{
-    display:flex;flex-direction:column;align-items:flex-start;gap:1.3rem;
-    position:absolute;top:100%;left:0;right:0;
-    background:var(--m-fundo);padding:1.6rem 4.5vw;
-    border-bottom:1px solid rgb(from var(--m-texto) r g b / .16);
-  }
   .bloco{min-height:auto;padding:5.5rem 0 4rem;}
   .abertura{min-height:100svh;}
+}
+
+/* ==========================================================================
+   CAMADA MOBILE
+   O desktop desta página vive de ponteiro: cursor próprio, ímã nos botões,
+   inclinação 3D, halo sob o cursor e os gatos que só acendem no hover. No
+   toque nada disso existe — e a página ficava parada.
+
+   Aqui cada efeito de ponteiro ganha um equivalente que o dedo ou a rolagem
+   dispara, e entram três coisas que só o celular tem: dock dos mundos,
+   carrossel com encaixe e menu de tela cheia.
+   ========================================================================== */
+
+/* Âncora não para mais atrás do cabeçalho fixo */
+html{scroll-padding-top:5.5rem;}
+
+/* ==========================================================================
+   Toque: o retorno que o hover dava, agora no :active
+   ========================================================================== */
+@media (hover:none),(pointer:coarse){
+  html{-webkit-text-size-adjust:100%;}
+  a,button,summary,[data-inclina],.ficha-cores span{-webkit-tap-highlight-color:transparent;}
+
+  .ima{
+    transition:background var(--troca), color var(--troca),
+               transform .3s var(--mola), box-shadow .3s ease;
+  }
+  .ima:active{transform:scale(.955);}
+  .ima-vazado:active{border-color:var(--m-acento);color:var(--m-acento);}
+
+  .passo:active,.cartao:active{transform:scale(.982);}
+  .nav-links a:active{color:var(--m-texto);}
+  .contato-lista dd a:active{background-size:100% 1px;}
+
+  /* Alvos de toque com pelo menos 44px de altura */
+  .nav-links a{padding-block:.35rem;}
+  .contato-lista dd a{display:inline-block;padding-block:.35rem;}
+  .ima{padding:1.05rem 1.8rem;font-size:.95rem;}
+}
+
+/* ==========================================================================
+   Os gatos acordam sozinhos
+   No desktop eles esperam o ponteiro. No toque não há ponteiro, então quem
+   acende é a própria entrada do bloco (.revelado), em cascata.
+   ========================================================================== */
+@media (hover:none),(pointer:coarse){
+  .passo-gato,.palco-gato,.cartao-gato{
+    opacity:0;
+    transform:translateY(10px) scale(.86);
+    transition:opacity .8s var(--saida), transform .8s var(--mola);
+  }
+  .revelado .passo-gato,
+  .revelado .palco-gato,
+  .revelado .cartao-gato{opacity:.8;transform:none;}
+  .revelado .cartao-gato{opacity:1;}
+
+  /* Cascata: um gato acorda depois do outro */
+  .passo:nth-child(1) .passo-gato,.cartao:nth-child(1) .cartao-gato{transition-delay:.30s;}
+  .passo:nth-child(2) .passo-gato,.cartao:nth-child(2) .cartao-gato{transition-delay:.42s;}
+  .passo:nth-child(3) .passo-gato,.cartao:nth-child(3) .cartao-gato{transition-delay:.54s;}
+  .passo:nth-child(4) .passo-gato{transition-delay:.66s;}
+
+  /* Gatos maiores: no celular eles são o personagem, não enfeite de canto */
+  .passo-gato{height:56px;top:.9rem;right:.8rem;}
+  .cartao-gato{height:72px;}
+  .palco-gato{height:clamp(54px,13vw,76px);}
+
+  /* Respiração lenta, para não parecerem adesivo colado */
+  .revelado .passo-gato,.revelado .cartao-gato{animation:respiraGato 6s ease-in-out infinite;}
+  .passo:nth-child(even) .passo-gato,.cartao:nth-child(even) .cartao-gato{animation-delay:-3s;}
+}
+@keyframes respiraGato{
+  0%,100%{transform:translateY(0) rotate(0);}
+  50%    {transform:translateY(-4px) rotate(-1.2deg);}
+}
+
+/* ==========================================================================
+   Abertura — o gato vigia e o título sobem em ritmos diferentes
+   ========================================================================== */
+@media (max-width:880px){
+  .abertura{padding-top:6.5rem;position:relative;overflow:hidden;}
+  /* position:relative fixa quem é o bloco de referência do gato — sem isso
+     ele muda de âncora nos navegadores que animam a grade pela rolagem. */
+  .abertura-grade{grid-template-columns:1fr;gap:0;position:relative;}
+  .abertura-pe{margin-top:2rem;gap:1.4rem;}
+  .abertura-linha{font-size:1rem;}
+
+  /* Empilhado, o gato jogava o herói para fora da dobra (835px de conteúdo
+     para 664 de tela). Ele sai do fluxo, cresce, sangra pela direita e vira
+     atmosfera atrás do texto — que é onde ele já estava no desktop, no fim
+     da linha. Agora a abertura inteira cabe de uma vez. */
+  /* O gato também é um div filho da grade: precisa ficar de fora daqui */
+  .abertura-grade > div:not(.abertura-gato){position:relative;z-index:1;}
+  .abertura-gato{
+    position:absolute;z-index:0;
+    right:-5vw;bottom:-7vh;
+    width:min(172px,44vw);
+    pointer-events:none;
+  }
+  .abertura-gato img{opacity:.62;}
+  /* A coluna de texto para antes do gato: nada se sobrepõe à leitura.
+     O recuo é do rodapé inteiro da abertura, então o parágrafo e a chamada
+     de rolagem param no mesmo lugar. */
+  .abertura-pe{padding-right:min(150px,39vw);}
+  .abertura-linha{max-width:none;}
+  .rolar{font-size:.62rem;}
+  .rolar-traco{width:34px;}
+}
+@media (hover:none),(pointer:coarse){
+  /* Sem ponteiro para vigiar, o gato olha em volta sozinho */
+  .abertura-gato img{animation:vigia 9s ease-in-out infinite;transform-origin:50% 88%;}
+}
+@keyframes vigia{
+  0%,100%{transform:rotate(0) translateY(0);}
+  22%    {transform:rotate(3.5deg) translateY(-3px);}
+  46%    {transform:rotate(-3deg) translateY(-1px);}
+  70%    {transform:rotate(1.5deg) translateY(-4px);}
+}
+
+/* A abertura sai de cena com paralaxe própria conforme a rolagem avança */
+@supports (animation-timeline: view()){
+  @media (max-width:880px){
+    .abertura-grade{
+      animation:saiDeCena linear both;
+      animation-timeline:view();
+      animation-range:exit -10% exit 90%;
+    }
+    .abertura-gato{
+      animation:gatoFica linear both;
+      animation-timeline:view();
+      animation-range:exit -10% exit 100%;
+    }
+  }
+}
+@keyframes saiDeCena{
+  from{opacity:1;transform:translateY(0) scale(1);}
+  to  {opacity:0;transform:translateY(-42px) scale(.96);}
+}
+@keyframes gatoFica{
+  from{transform:translateY(0) rotate(0);}
+  to  {transform:translateY(38px) rotate(-6deg);}
+}
+
+/* ==========================================================================
+   Carrossel com encaixe — método e cartões
+   Empilhados eles viravam uma lista longa e sem graça. Deslizando de lado,
+   o cartão do meio fica em foco e os vizinhos recuam: dá o mesmo destaque
+   que o hover dava no desktop, só que com o polegar.
+   ========================================================================== */
+/* O trilho e a dica são montados pelo JS, mas só valem como carrossel:
+   fora da largura de celular eles somem. */
+.carrossel-pista,.carrossel-dica{display:none;}
+
+@media (max-width:620px){
+  .passos,.cartoes{
+    --sangria:calc((100vw - 100%) / 2);
+    display:flex;
+    grid-template-columns:none;
+    gap:.85rem;
+    overflow-x:auto;
+    overflow-y:visible;
+    scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+    margin-inline:calc(-1 * var(--sangria));
+    padding-inline:var(--sangria);
+    padding-block:.6rem 1.1rem;
+    perspective:none;
+  }
+  .passos::-webkit-scrollbar,.cartoes::-webkit-scrollbar{display:none;}
+
+  .passo,.cartao{
+    flex:0 0 78%;
+    scroll-snap-align:center;
+    scroll-snap-stop:always;
+  }
+  .cartao{flex-basis:82%;}
+
+  /* Sem hover, o halo do cartão fica ligado de leve e o dedo move o centro */
+  .cartao::before{opacity:.55;}
+
+  /* Trilho de posição, montado pelo JS logo abaixo do carrossel */
+  .carrossel-pista{
+    display:block;
+    position:relative;height:2px;margin-top:.2rem;
+    background:rgb(from var(--m-texto) r g b / .13);
+    overflow:hidden;
+  }
+  .carrossel-pista i{
+    position:absolute;top:0;left:0;height:100%;
+    width:var(--fatia,25%);
+    transform:translateX(var(--pos,0));
+    background:var(--m-acento);
+    transition:transform .18s linear, background var(--troca);
+  }
+  .carrossel-dica{
+    display:flex;align-items:center;gap:.5rem;justify-content:flex-end;
+    margin-top:.7rem;
+    font-family:'JetBrains Mono',monospace;font-size:.6rem;
+    letter-spacing:.2em;text-transform:uppercase;color:var(--m-apoio);
+    transition:opacity .5s ease, color var(--troca);
+  }
+  .carrossel-dica.some{opacity:0;}
+  .carrossel-dica svg{width:16px;height:16px;animation:acena 1.9s ease-in-out infinite;}
+}
+@keyframes acena{
+  0%,100%{transform:translateX(0);opacity:.5;}
+  50%    {transform:translateX(7px);opacity:1;}
+}
+
+/* O cartão que está no centro do carrossel fica inteiro; os vizinhos recuam */
+@supports (animation-timeline: view()){
+  @media (max-width:620px){
+    .passo,.cartao{
+      animation:foco linear both;
+      animation-timeline:view(inline);
+      animation-range:entry 8% exit 92%;
+    }
+  }
+}
+@keyframes foco{
+  0%,100%{opacity:.45;transform:scale(.9);}
+  46%,54%{opacity:1;transform:scale(1);}
+}
+
+/* ==========================================================================
+   Mundos — cada projeto ganha a tela inteira
+   ========================================================================== */
+@media (max-width:900px){
+  .mundo{min-height:92svh;}
+  .mundo-grade{gap:2.2rem;}
+  .mundo h2{font-size:clamp(2.9rem,12vw,4.4rem);}
+  .mundo-conceito{font-size:1rem;}
+
+  /* O palco deixa de ser miniatura e vira cena */
+  .palco{
+    aspect-ratio:5/4;
+    background:radial-gradient(120% 90% at 50% 42%,
+               rgb(from var(--m-acento) r g b / .13), transparent 68%);
+  }
+  .palco::after{font-size:.58rem;}
+
+  .g-balanca{width:min(74%,260px);}
+  .g-tesoura{width:min(58%,175px);}
+  .g-patas span{width:34px;height:34px;}
+  .g-fls{padding:1.2rem 1.6rem;}
+  .g-fls .v{font-size:2.9rem;}
+
+  .ficha{gap:.7rem 1.2rem;}
+  .ficha-cores span{width:32px;height:32px;}
+}
+
+/* O gesto de cada mundo flutua contra a rolagem: dá profundidade ao palco */
+@supports (animation-timeline: view()){
+  @media (max-width:900px){
+    .g-balanca,.g-tesoura,.g-patas,.g-fls{
+      animation:flutuaGesto linear both;
+      animation-timeline:view();
+      animation-range:entry 0% exit 100%;
+    }
+  }
+}
+@keyframes flutuaGesto{
+  from{transform:translateY(26px) scale(.94);}
+  to  {transform:translateY(-26px) scale(1.04);}
+}
+
+/* As amostras de cor entram em cascata em vez de esperar um hover que não vem */
+@media (hover:none),(pointer:coarse){
+  .ficha-cores span{
+    opacity:0;transform:translateY(10px) scale(.6);
+    transition:opacity .5s var(--saida), transform .55s var(--mola),
+               border-radius .35s var(--saida);
+  }
+  .revelado .ficha-cores span{opacity:1;transform:none;}
+  .revelado .ficha-cores span:nth-child(1){transition-delay:.40s;}
+  .revelado .ficha-cores span:nth-child(2){transition-delay:.48s;}
+  .revelado .ficha-cores span:nth-child(3){transition-delay:.56s;}
+  .revelado .ficha-cores span:nth-child(4){transition-delay:.64s;}
+}
+
+/* ==========================================================================
+   Dock dos mundos — só existe no celular
+   A metamorfose de cor é o coração da página, mas numa tela pequena o leitor
+   perde a conta de onde está. O dock mostra em que mundo ele entrou e leva
+   direto para os outros. Ele veste as cores do mundo atual junto com a página.
+   ========================================================================== */
+.dock{
+  position:fixed;z-index:6200;
+  left:50%;bottom:calc(1rem + env(safe-area-inset-bottom,0px));
+  display:none;align-items:center;gap:.8rem;
+  padding:.55rem .6rem .55rem 1rem;
+  border-radius:999px;
+  background:rgb(from var(--m-fundo) r g b / .74);
+  -webkit-backdrop-filter:blur(16px) saturate(1.5);
+  backdrop-filter:blur(16px) saturate(1.5);
+  border:1px solid rgb(from var(--m-texto) r g b / .15);
+  box-shadow:0 14px 38px rgba(0,0,0,.5);
+  opacity:0;transform:translateX(-50%) translateY(150%);
+  transition:transform .6s var(--saida), opacity .4s ease,
+             background var(--troca), border-color var(--troca);
+}
+.dock.dentro{opacity:1;transform:translateX(-50%) translateY(0);}
+.dock-nome{
+  font-family:'JetBrains Mono',monospace;
+  font-size:.58rem;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--m-texto);white-space:nowrap;
+  transition:color var(--troca);
+}
+.dock-pontos{display:flex;align-items:center;gap:.2rem;}
+.dock-pontos button{
+  width:26px;height:26px;padding:0;border:0;background:none;cursor:pointer;
+  display:grid;place-items:center;
+  -webkit-tap-highlight-color:transparent;
+}
+.dock-pontos button::before{
+  content:"";width:7px;height:7px;border-radius:50%;
+  background:rgb(from var(--m-texto) r g b / .3);
+  transition:background .4s ease, transform .45s var(--mola), box-shadow .4s ease;
+}
+.dock-pontos button[aria-current="true"]::before{
+  background:var(--m-acento);transform:scale(1.5);
+  box-shadow:0 0 0 4px rgb(from var(--m-acento) r g b / .18);
+}
+.dock-pontos button:active::before{transform:scale(1.15);}
+@media (hover:none),(pointer:coarse){
+  .dock{display:flex;}
+  /* O dock ocupa o rodapé da tela: o conteúdo final precisa de folga */
+  footer{padding-bottom:5rem;}
+}
+
+/* Barra de progresso mais visível no dedo */
+@media (hover:none),(pointer:coarse){
+  .progresso{height:3px;}
+}
+
+/* ==========================================================================
+   Menu de tela cheia
+   O painel dobrado embaixo do cabeçalho era o pedaço mais genérico da página.
+   Vira uma tela inteira, com os links em serifada grande entrando em cascata
+   e o gato dormindo ao fundo.
+   ========================================================================== */
+@media (max-width:880px){
+  .menu-toggle{
+    display:block;position:relative;z-index:6301;
+    width:44px;height:44px;font-size:1.5rem;line-height:1;
+  }
+
+  .nav-links{
+    display:flex;
+    position:fixed;inset:0;z-index:6300;
+    flex-direction:column;justify-content:center;align-items:flex-start;
+    gap:0;
+    padding:0 8vw calc(4rem + env(safe-area-inset-bottom,0px));
+    background:var(--m-fundo);
+    border-bottom:0;
+    visibility:hidden;opacity:0;pointer-events:none;
+    transition:opacity .45s var(--saida), visibility 0s linear .45s;
+  }
+  /* O gato dormindo, atrás dos links */
+  .nav-links::after{
+    content:"";position:absolute;right:-4vw;bottom:6vh;
+    width:min(300px,62vw);aspect-ratio:520/320;
+    background:url('../assets/img/gato-dormindo.webp') no-repeat center/contain;
+    opacity:0;transform:translateY(30px);
+    transition:opacity .8s var(--saida) .2s, transform .8s var(--saida) .2s;
+    pointer-events:none;
+  }
+  .nav-links.aberto{
+    position:fixed;top:0;left:0;right:0;bottom:0;
+    padding:0 8vw calc(4rem + env(safe-area-inset-bottom,0px));
+    background:var(--m-fundo);
+    visibility:visible;opacity:1;pointer-events:auto;
+    transition:opacity .45s var(--saida), visibility 0s linear 0s;
+  }
+  .nav-links.aberto::after{opacity:.5;transform:none;}
+
+  .nav-links li{
+    list-style:none;width:100%;
+    border-bottom:1px solid rgb(from var(--m-texto) r g b / .1);
+  }
+  .nav-links a{
+    display:block;padding:1.15rem 0;
+    font-family:'Instrument Serif',Georgia,serif;
+    font-size:clamp(2rem,9vw,2.9rem);font-weight:400;
+    letter-spacing:-.02em;text-transform:none;
+    color:var(--m-texto);
+    opacity:0;transform:translateY(26px);
+    transition:opacity .6s var(--saida), transform .6s var(--saida), color .3s ease;
+  }
+  .nav-links a::after{bottom:1rem;}
+  .nav-links.aberto a{opacity:1;transform:none;}
+  .nav-links.aberto li:nth-child(1) a{transition-delay:.10s;}
+  .nav-links.aberto li:nth-child(2) a{transition-delay:.17s;}
+  .nav-links.aberto li:nth-child(3) a{transition-delay:.24s;}
+  .nav-links.aberto li:nth-child(4) a{transition-delay:.31s;}
+
+  /* Numeração dos itens, no mesmo tom técnico do resto da página */
+  .nav-links li{position:relative;counter-increment:menu;}
+  .nav-links{counter-reset:menu;}
+  .nav-links li::before{
+    content:"0" counter(menu);
+    position:absolute;right:0;top:50%;transform:translateY(-50%);
+    font-family:'JetBrains Mono',monospace;font-size:.62rem;
+    letter-spacing:.18em;color:var(--m-apoio);
+    opacity:0;transition:opacity .5s ease .35s;
+  }
+  .nav-links.aberto li::before{opacity:.7;}
+
+  body.menu-aberto{overflow:hidden;}
+  /* Com o menu aberto o cabeçalho não pode fugir com a rolagem */
+  body.menu-aberto header.escondido{transform:none;}
+}
+
+/* ==========================================================================
+   Ritmo geral no celular
+   ========================================================================== */
+@media (max-width:880px){
+  .bloco{padding:5rem 0 4.5rem;}
+  .metodo h2,.sobre h2{font-size:clamp(2.5rem,10vw,3.6rem);margin-bottom:2.2rem;}
+  .sobre-linha{margin-bottom:2rem;}
+  .contato-lista{margin-top:2.6rem;gap:1.4rem;}
+  .contato-acoes{gap:.8rem;}
+  .contato-acoes .ima{flex:1 1 100%;justify-content:center;}
+  .outdoor-gato{height:26px;}
+  .outdoor-fita{animation-duration:26s;}
+}
+@media (max-width:420px){
+  .abertura h1{font-size:clamp(2.9rem,13vw,3.6rem);}
+  .bloco-interno{--env:92vw;}
+}
+
+/* Rodapé: o gato dorme centralizado, não espremido no canto */
+@media (max-width:560px){
+  .rodape-cena{justify-items:center;text-align:center;}
+  .rodape-frase{max-width:none;}
+  .rodape-gato{width:min(230px,62vw);justify-self:center;}
+  .rodape-base{align-items:center;text-align:center;}
 }
 
 /* ==========================================================================
@@ -561,6 +992,15 @@ footer{position:relative;z-index:1;overflow:hidden;padding:0 0 2rem;}
   .outdoor-fita,.viga,.pr-e,.pr-d,.g-patas span,.lam-a,.lam-b,.rolar-traco::after,
   .outdoor-fita{animation:none !important;}
   .g-patas span{opacity:1 !important;}
+  /* Animação ligada à rolagem não obedece a duração: desliga pelo nome */
+  .abertura-grade,.abertura-gato,.abertura-gato img,
+  .passo,.cartao,.g-balanca,.g-tesoura,.g-patas,.g-fls,
+  .passo-gato,.cartao-gato,.palco-gato{animation:none !important;}
+  .passo-gato,.palco-gato,.cartao-gato{opacity:.8 !important;transform:none !important;}
+  .ficha-cores span{opacity:1 !important;transform:none !important;}
+  .nav-links a,.nav-links li::before,.nav-links::after{opacity:1 !important;transform:none !important;}
+  .dock{transition:opacity .001ms !important;}
+  .campo{display:none;}
   *,*::before,*::after{
     animation-duration:.001ms !important;
     animation-iteration-count:1 !important;

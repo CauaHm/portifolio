@@ -60,13 +60,20 @@
     if(!tela || reduzido) return;
 
     var ctx = tela.getContext('2d', { alpha:true });
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // No celular o ponteiro não existe: quem anima o campo é um ponto que
+    // passeia sozinho, mais os toques do dedo. E a densidade cai um pouco,
+    // porque o alvo é uma GPU de telefone.
+    var grosso = !pontoFino;
+    var dpr = Math.min(window.devicePixelRatio || 1, grosso ? 1.5 : 2);
     var pontos = [], larg = 0, alt = 0;
     var pt = { x:-9999, y:-9999 };
+    var vagante = { x:-9999, y:-9999 };
+    var ondas = [];
     var cor = [242,240,234];
     var laco = null, visivel = true;
 
-    var ESPACO = 44, RAIO = 135, FORCA = 24;
+    var ESPACO = grosso ? 38 : 44, RAIO = grosso ? 150 : 135, FORCA = grosso ? 27 : 24;
+    var ONDA_VIDA = 1150, ONDA_VEL = 0.62, ONDA_ESPESSURA = 46;
 
     function medir(){
       larg = window.innerWidth; alt = window.innerHeight;
@@ -83,22 +90,61 @@
       }
     }
 
+    // Empurra o ponto para longe de um centro e devolve o brilho que ganhou
+    function atrai(p, cx, cy, alvo){
+      var dx = p.ox - cx, dy = p.oy - cy;
+      var d = Math.hypot(dx, dy);
+      if(d >= RAIO) return 0;
+      var f = 1 - d / RAIO, ang = Math.atan2(dy, dx);
+      alvo.x += Math.cos(ang) * f * FORCA;
+      alvo.y += Math.sin(ang) * f * FORCA;
+      return f;
+    }
+
     function desenhar(){
+      var t = performance.now();
+
+      // O passeio só existe no toque: no desktop quem manda é o ponteiro
+      if(grosso){
+        vagante.x = larg * (.5 + .36 * Math.sin(t / 5400));
+        vagante.y = alt  * (.5 + .32 * Math.sin(t / 3900 + 1.1));
+      }
+
+      // Limpa ondas que já se apagaram
+      for(var o = ondas.length - 1; o >= 0; o--){
+        if(t - ondas[o].nasc > ONDA_VIDA){ ondas.splice(o, 1); }
+      }
+
       ctx.clearRect(0, 0, larg, alt);
       var base = 'rgb(' + cor[0] + ',' + cor[1] + ',' + cor[2] + ')';
+
       for(var k = 0; k < pontos.length; k++){
         var p = pontos[k];
-        var dx = p.ox - pt.x, dy = p.oy - pt.y;
-        var d = Math.hypot(dx, dy);
-        var ax = p.ox, ay = p.oy, brilho = .2;
-        if(d < RAIO){
-          var f = 1 - d / RAIO, ang = Math.atan2(dy, dx);
-          ax = p.ox + Math.cos(ang) * f * FORCA;
-          ay = p.oy + Math.sin(ang) * f * FORCA;
-          brilho = .2 + f * .8;
+        var alvo = { x:p.ox, y:p.oy };
+        var brilho = .2;
+
+        brilho = Math.max(brilho, .2 + atrai(p, pt.x, pt.y, alvo) * .8);
+        if(grosso){
+          brilho = Math.max(brilho, .2 + atrai(p, vagante.x, vagante.y, alvo) * .55);
         }
-        p.x += (ax - p.x) * .12;
-        p.y += (ay - p.y) * .12;
+
+        // Anel de toque: uma crista que atravessa o campo e some
+        for(var w = 0; w < ondas.length; w++){
+          var od = ondas[w];
+          var idade = t - od.nasc;
+          var raio = idade * ONDA_VEL;
+          var dist = Math.abs(Math.hypot(p.ox - od.x, p.oy - od.y) - raio);
+          if(dist < ONDA_ESPESSURA){
+            var crista = (1 - dist / ONDA_ESPESSURA) * (1 - idade / ONDA_VIDA);
+            var a = Math.atan2(p.oy - od.y, p.ox - od.x);
+            alvo.x += Math.cos(a) * crista * 22;
+            alvo.y += Math.sin(a) * crista * 22;
+            brilho = Math.max(brilho, .2 + crista * .8);
+          }
+        }
+
+        p.x += (alvo.x - p.x) * .12;
+        p.y += (alvo.y - p.y) * .12;
         ctx.globalAlpha = brilho;
         ctx.fillStyle = base;
         ctx.fillRect(p.x, p.y, 1.5, 1.5);
@@ -112,6 +158,22 @@
 
     window.addEventListener('mousemove', function(e){ pt.x = e.clientX; pt.y = e.clientY; }, { passive:true });
     window.addEventListener('mouseleave', function(){ pt.x = -9999; pt.y = -9999; }, { passive:true });
+
+    // O dedo faz as duas coisas: arrasta o campo e deixa um anel onde tocou
+    window.addEventListener('touchstart', function(e){
+      var d = e.touches[0]; if(!d) return;
+      pt.x = d.clientX; pt.y = d.clientY;
+      if(ondas.length < 4){ ondas.push({ x:d.clientX, y:d.clientY, nasc:performance.now() }); }
+    }, { passive:true });
+    window.addEventListener('touchmove', function(e){
+      var d = e.touches[0]; if(!d) return;
+      pt.x = d.clientX; pt.y = d.clientY;
+    }, { passive:true });
+    window.addEventListener('touchend', function(){
+      // O ponto de atração solta devagar; o passeio assume de novo
+      pt.x = -9999; pt.y = -9999;
+    }, { passive:true });
+
     window.addEventListener('resize', medir, { passive:true });
     document.addEventListener('visibilitychange', function(){
       visivel = !document.hidden;
@@ -295,19 +357,186 @@
   var navLinks = document.getElementById('nav-links');
   var menuToggle = document.getElementById('menu-toggle');
   if(navLinks && menuToggle){
-    menuToggle.addEventListener('click', function(){
-      var aberto = navLinks.classList.toggle('aberto');
+    // O menu virou tela cheia: enquanto está aberto, o corpo não rola atrás.
+    function estado(aberto){
+      navLinks.classList.toggle('aberto', aberto);
+      document.body.classList.toggle('menu-aberto', aberto);
       menuToggle.setAttribute('aria-expanded', aberto ? 'true' : 'false');
+      menuToggle.setAttribute('aria-label', aberto ? 'Fechar menu' : 'Abrir menu');
       menuToggle.textContent = aberto ? '✕' : '☰';
+    }
+    menuToggle.addEventListener('click', function(){
+      estado(!navLinks.classList.contains('aberto'));
     });
     navLinks.querySelectorAll('a').forEach(function(a){
-      a.addEventListener('click', function(){
-        navLinks.classList.remove('aberto');
-        menuToggle.setAttribute('aria-expanded','false');
-        menuToggle.textContent = '☰';
-      });
+      a.addEventListener('click', function(){ estado(false); });
+    });
+    document.addEventListener('keydown', function(e){
+      if(e.key === 'Escape' && navLinks.classList.contains('aberto')){
+        estado(false); menuToggle.focus();
+      }
     });
   }
+
+  /* ==========================================================================
+     Dock dos mundos — só no toque
+     A metamorfose de cor é o coração da página, mas numa tela pequena o leitor
+     perde a conta de onde está. O dock diz em que mundo ele entrou, veste a
+     cor daquele mundo junto com a página e leva direto para os outros.
+     ========================================================================== */
+  (function dock(){
+    if(pontoFino) return;
+    var mundos = Array.prototype.slice.call(document.querySelectorAll('.mundo'));
+    var caixaMundos = document.getElementById('mundos');
+    if(!mundos.length || !caixaMundos || !('IntersectionObserver' in window)) return;
+
+    function titulo(sec){
+      var h = sec.querySelector('h2');
+      return h ? h.textContent.replace(/\s+/g, ' ').trim() : '';
+    }
+
+    var barra = document.createElement('nav');
+    barra.className = 'dock';
+    barra.setAttribute('aria-label', 'Projetos');
+
+    var nome = document.createElement('span');
+    nome.className = 'dock-nome';
+    nome.textContent = titulo(mundos[0]);
+
+    var caixaPontos = document.createElement('div');
+    caixaPontos.className = 'dock-pontos';
+
+    var botoes = mundos.map(function(sec, i){
+      if(!sec.id){ sec.id = 'mundo-' + (i + 1); }
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.setAttribute('aria-label', titulo(sec));
+      b.addEventListener('click', function(){
+        sec.scrollIntoView({ behavior: reduzido ? 'auto' : 'smooth', block:'start' });
+      });
+      caixaPontos.appendChild(b);
+      return b;
+    });
+
+    barra.appendChild(nome);
+    barra.appendChild(caixaPontos);
+    document.body.appendChild(barra);
+
+    var atual = -1;
+    function marcar(i){
+      if(i === atual) return;
+      atual = i;
+      nome.textContent = titulo(mundos[i]);
+      botoes.forEach(function(b, j){
+        if(j === i){ b.setAttribute('aria-current', 'true'); }
+        else { b.removeAttribute('aria-current'); }
+      });
+    }
+
+    // Vence quem ocupa mais tela, como na metamorfose: evita piscar na fronteira
+    var ioAtual = new IntersectionObserver(function(entradas){
+      var lider = -1, maior = 0;
+      entradas.forEach(function(e){
+        if(e.isIntersecting && e.intersectionRatio > maior){
+          maior = e.intersectionRatio;
+          lider = mundos.indexOf(e.target);
+        }
+      });
+      if(lider >= 0){ marcar(lider); }
+    }, { threshold:[.3,.55,.8] });
+    mundos.forEach(function(sec){ ioAtual.observe(sec); });
+
+    // O dock só aparece enquanto a leitura está dentro dos mundos
+    var ioFaixa = new IntersectionObserver(function(entradas){
+      entradas.forEach(function(e){ barra.classList.toggle('dentro', e.isIntersecting); });
+    }, { threshold:0, rootMargin:'-25% 0px -25% 0px' });
+    ioFaixa.observe(caixaMundos);
+  })();
+
+  /* ==========================================================================
+     Carrosséis com encaixe — método e cartões
+     Empilhados no celular viravam lista longa. Deslizando de lado, o cartão do
+     meio fica em foco: é o destaque que o hover dava no desktop, com o polegar.
+     ========================================================================== */
+  (function carrosseis(){
+    var estreito = window.matchMedia('(max-width: 620px)');
+
+    function montar(el, rotulo){
+      if(!el) return;
+
+      var pista = document.createElement('div');
+      pista.className = 'carrossel-pista';
+      pista.setAttribute('aria-hidden', 'true');
+      var barra = document.createElement('i');
+      pista.appendChild(barra);
+
+      var dica = document.createElement('p');
+      dica.className = 'carrossel-dica';
+      dica.setAttribute('aria-hidden', 'true');
+      dica.innerHTML = '<span>arraste</span>' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+        'stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+
+      el.insertAdjacentElement('afterend', dica);
+      el.insertAdjacentElement('afterend', pista);
+
+      function atualizar(){
+        var total = el.scrollWidth;
+        if(total <= 0) return;
+        var fatia = Math.min(1, el.clientWidth / total);
+        var maximo = total - el.clientWidth;
+        var andado = maximo > 0 ? el.scrollLeft / maximo : 0;
+        barra.style.setProperty('--fatia', (fatia * 100) + '%');
+        barra.style.setProperty('--pos', (andado * (100 / fatia - 100)) + '%');
+      }
+
+      var tocou = false;
+      el.addEventListener('scroll', function(){
+        atualizar();
+        if(!tocou){ tocou = true; dica.classList.add('some'); }
+      }, { passive:true });
+      window.addEventListener('resize', atualizar, { passive:true });
+
+      function aplicar(){
+        if(estreito.matches){
+          // Só vira região navegável quando de fato é um carrossel
+          el.setAttribute('tabindex', '0');
+          el.setAttribute('role', 'group');
+          el.setAttribute('aria-label', rotulo);
+          atualizar();
+        } else {
+          el.removeAttribute('tabindex');
+          el.removeAttribute('role');
+          el.removeAttribute('aria-label');
+        }
+      }
+      aplicar();
+      if(estreito.addEventListener){ estreito.addEventListener('change', aplicar); }
+      else if(estreito.addListener){ estreito.addListener(aplicar); }
+    }
+
+    montar(document.querySelector('.passos'), 'Etapas do método — deslize para o lado');
+    montar(document.querySelector('.cartoes'), 'Como eu trabalho — deslize para o lado');
+  })();
+
+  /* ==========================================================================
+     Halo sob o dedo
+     No desktop o halo do cartão segue o ponteiro. No toque, segue o dedo.
+     ========================================================================== */
+  (function haloToque(){
+    if(pontoFino) return;
+    document.querySelectorAll('[data-inclina]').forEach(function(el){
+      function mover(e){
+        var d = e.touches && e.touches[0];
+        if(!d) return;
+        var r = el.getBoundingClientRect();
+        el.style.setProperty('--px', ((d.clientX - r.left) / r.width * 100) + '%');
+        el.style.setProperty('--py', ((d.clientY - r.top) / r.height * 100) + '%');
+      }
+      el.addEventListener('touchstart', mover, { passive:true });
+      el.addEventListener('touchmove', mover, { passive:true });
+    });
+  })();
 
   /* ---------- Ano ---------- */
   var ano = document.getElementById('ano');
