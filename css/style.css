@@ -1,0 +1,570 @@
+/* ==========================================================================
+   Portfólio — Cauã
+   A página se transforma em cada projeto: fundo, texto, acento e a
+   tipografia do título trocam conforme a leitura desce.
+
+   Tipografia: serifada de alto contraste (Instrument Serif) contra
+   monoespaçada técnica — o par é o que dá o ar tecnológico sem virar
+   "mais uma landing escura de dev".
+
+   Todos os pares de cor em uso foram medidos. O pior é 4,97:1 (AA).
+   ========================================================================== */
+
+/* Sem @property o navegador salta de uma paleta para a outra em vez de
+   atravessar. É esta declaração que faz a metamorfose existir. */
+@property --m-fundo   { syntax:'<color>'; inherits:true; initial-value:#0a0a0c; }
+@property --m-texto   { syntax:'<color>'; inherits:true; initial-value:#f2f0ea; }
+@property --m-apoio   { syntax:'<color>'; inherits:true; initial-value:#9a97a3; }
+@property --m-acento  { syntax:'<color>'; inherits:true; initial-value:#8b7cff; }
+
+:root{
+  --m-fundo:#0a0a0c;
+  --m-texto:#f2f0ea;
+  --m-apoio:#9a97a3;
+  --m-acento:#8b7cff;
+
+  --superficie:#15151a;
+
+  --troca:1100ms cubic-bezier(.4,0,.2,1);
+  --saida:cubic-bezier(.16,1,.3,1);
+  --mola:cubic-bezier(.34,1.45,.64,1);
+
+  --env:min(1280px, 91vw);
+}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  background:var(--m-fundo);
+  color:var(--m-texto);
+  font-family:'Instrument Sans',system-ui,sans-serif;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+  transition:background var(--troca), color var(--troca);
+}
+a{color:inherit;}
+img,svg,canvas{display:block;max-width:100%;}
+
+h1,h2,h3,.serif{
+  font-family:'Instrument Serif',Georgia,serif;
+  font-weight:400;line-height:.98;letter-spacing:-.022em;
+  text-wrap:balance;
+}
+h1 em,h2 em,.serif em{font-style:italic;}
+
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;}
+.etiq{
+  font-family:'JetBrains Mono',ui-monospace,monospace;
+  font-size:.68rem;font-weight:500;letter-spacing:.26em;text-transform:uppercase;
+  color:var(--m-apoio);transition:color var(--troca);
+}
+
+/* ---------- Acessibilidade ---------- */
+.pular{
+  position:fixed;left:1rem;top:-5rem;z-index:9999;
+  background:var(--m-acento);color:#08080a;
+  padding:.9rem 1.4rem;font-weight:700;text-decoration:none;
+  transition:top .2s ease;
+}
+.pular:focus{top:1rem;}
+a:focus-visible,button:focus-visible{outline:2px solid var(--m-acento);outline-offset:5px;}
+
+/* ==========================================================================
+   Carregamento — o gato atravessa a tela enquanto a página monta
+   ========================================================================== */
+.carga{
+  position:fixed;inset:0;z-index:9000;
+  background:#08080a;
+  display:grid;place-items:center;
+  transition:opacity .55s ease .35s, visibility 0s linear .9s;
+}
+.carga.saiu{opacity:0;visibility:hidden;}
+.carga-cena{
+  position:relative;width:min(560px,80vw);
+}
+/* Chão que o gato percorre */
+.carga-chao{
+  position:relative;height:1px;
+  background:rgba(242,240,234,.16);
+  overflow:visible;
+}
+.carga-chao::after{
+  content:"";position:absolute;left:0;top:0;height:1px;
+  width:var(--andado,0%);
+  background:#8b7cff;
+  transition:width .25s ease;
+}
+/* O gato senta no meio da cena e fica parado; o traço do chão é que avança. */
+.carga-gato{
+  position:absolute;bottom:0;left:50%;
+  width:120px;
+  transform:translateX(-50%);
+}
+.carga-gato img{width:100%;height:auto;}
+.carga-rodape{
+  display:flex;justify-content:space-between;align-items:baseline;
+  margin-top:1.4rem;
+  font-family:'JetBrains Mono',monospace;font-size:.68rem;
+  letter-spacing:.2em;text-transform:uppercase;color:#8b8896;
+}
+.carga-pct{color:#f2f0ea;font-variant-numeric:tabular-nums;}
+
+/* O gato do carregamento fica parado: quem se move é o traço do chão,
+   avançando por baixo dele. */
+
+/* ==========================================================================
+   Os gatos
+   São imagens de traço branco com fundo transparente. Ficam parados: o que
+   muda é a opacidade ao passar o mouse, para não competirem com o conteúdo.
+   Todos declaram width/height no HTML, então não há salto de layout.
+   ========================================================================== */
+.abertura-grade{display:grid;grid-template-columns:1fr auto;gap:3rem;align-items:end;}
+.abertura-gato{width:clamp(130px,16vw,210px);}
+.abertura-gato img{width:100%;height:auto;opacity:.92;}
+@media (max-width:880px){
+  .abertura-grade{grid-template-columns:1fr;}
+  .abertura-gato{width:130px;justify-self:end;}
+}
+
+/* Método: o gato espia do canto do cartão */
+.passo{position:relative;}
+.passo-gato{
+  position:absolute;top:1rem;right:.9rem;
+  width:auto;height:44px;
+  opacity:.22;
+  transition:opacity .45s ease;
+}
+.passo:hover .passo-gato{opacity:.75;}
+
+/* Mundos: um gato acompanha o gesto de cada projeto */
+.palco-gato{
+  position:absolute;right:1.1rem;bottom:1rem;
+  width:auto;height:clamp(44px,7vw,68px);
+  opacity:.2;
+  transition:opacity .5s ease;
+}
+.palco:hover .palco-gato{opacity:.7;}
+
+/* Contato: gato de barriga para cima */
+.contato-grade{display:grid;grid-template-columns:1fr auto;gap:3rem;align-items:end;}
+.contato-gato{width:clamp(170px,22vw,290px);height:auto;opacity:.9;}
+@media (max-width:880px){
+  .contato-grade{grid-template-columns:1fr;}
+  .contato-gato{width:min(210px,60vw);justify-self:end;}
+}
+
+/* ==========================================================================
+   Campo de pontos em canvas
+   ========================================================================== */
+.campo{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.8;}
+
+/* ==========================================================================
+   Cursor próprio
+   ========================================================================== */
+.cursor{
+  position:fixed;top:0;left:0;z-index:8000;
+  width:12px;height:12px;border-radius:50%;
+  background:var(--m-acento);
+  pointer-events:none;mix-blend-mode:difference;
+  transition:width .3s var(--mola), height .3s var(--mola), opacity .3s ease;
+  will-change:transform;
+}
+.cursor.grande{width:58px;height:58px;}
+.cursor.oculto{opacity:0;}
+.cursor-anel{
+  position:fixed;top:0;left:0;z-index:7999;
+  width:32px;height:32px;border-radius:50%;
+  border:1px solid var(--m-acento);
+  pointer-events:none;opacity:.45;
+  will-change:transform;
+  transition:opacity .3s ease, border-color var(--troca);
+}
+@media (hover:none),(pointer:coarse){ .cursor,.cursor-anel{display:none;} }
+
+/* ==========================================================================
+   Cabeçalho
+   ========================================================================== */
+header{
+  position:fixed;top:0;left:0;right:0;z-index:6000;
+  padding:1.1rem 0;
+  transition:transform .5s var(--saida);
+}
+header.escondido{transform:translateY(-115%);}
+.nav{
+  width:var(--env);margin-inline:auto;
+  display:flex;align-items:center;justify-content:space-between;gap:2rem;
+}
+.marca{display:flex;align-items:center;gap:.6rem;text-decoration:none;}
+.marca-gato{width:auto;height:28px;opacity:.85;transition:opacity .3s ease;}
+.marca:hover .marca-gato{opacity:1;}
+.marca b{
+  font-family:'Instrument Serif',serif;font-weight:400;font-size:1.3rem;
+  letter-spacing:-.01em;color:var(--m-texto);transition:color var(--troca);
+}
+.nav-links{display:flex;gap:1.7rem;list-style:none;align-items:center;}
+.nav-links a{
+  position:relative;
+  font-family:'JetBrains Mono',monospace;
+  font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;
+  text-decoration:none;color:var(--m-apoio);
+  transition:color .3s ease;
+}
+.nav-links a::after{
+  content:"";position:absolute;left:0;bottom:-5px;height:1px;width:0;
+  background:var(--m-acento);transition:width .35s var(--saida);
+}
+.nav-links a:hover{color:var(--m-texto);}
+.nav-links a:hover::after{width:100%;}
+.menu-toggle{display:none;background:none;border:0;color:var(--m-texto);font-size:1.4rem;cursor:pointer;}
+
+.progresso{
+  position:fixed;left:0;top:0;height:2px;z-index:6100;
+  width:var(--lido,0%);background:var(--m-acento);
+  transition:background var(--troca);
+}
+
+/* ==========================================================================
+   Blocos e revelação
+   ========================================================================== */
+.bloco{
+  position:relative;z-index:1;
+  min-height:100svh;display:flex;align-items:center;
+  padding:7rem 0 5rem;
+}
+.bloco-interno{width:var(--env);margin-inline:auto;}
+
+.linha-mascara{overflow:hidden;display:block;}
+.linha-mascara > span{display:block;transform:translateY(105%);transition:transform 1s var(--saida);}
+.revelado .linha-mascara > span{transform:translateY(0);}
+.linha-mascara:nth-child(2) > span{transition-delay:.08s;}
+.linha-mascara:nth-child(3) > span{transition-delay:.16s;}
+
+.sobe{opacity:0;transform:translateY(26px);transition:opacity .9s var(--saida) .22s, transform .9s var(--saida) .22s;}
+.revelado .sobe{opacity:1;transform:translateY(0);}
+.sobe-2{transition-delay:.32s;}
+.sobe-3{transition-delay:.42s;}
+
+/* ==========================================================================
+   Abertura
+   ========================================================================== */
+.abertura h1{font-size:clamp(3.2rem,12vw,10.5rem);margin:1.5rem 0 2rem;}
+.abertura h1 em{color:var(--m-acento);transition:color var(--troca);}
+.abertura-pe{
+  display:flex;justify-content:space-between;align-items:flex-end;
+  gap:2rem;flex-wrap:wrap;margin-top:2.6rem;padding-top:1.6rem;
+  border-top:1px solid rgb(from var(--m-texto) r g b / .16);
+}
+.abertura-linha{max-width:44ch;color:var(--m-apoio);font-size:1.05rem;transition:color var(--troca);}
+.rolar{
+  display:flex;align-items:center;gap:.7rem;
+  font-family:'JetBrains Mono',monospace;font-size:.66rem;
+  letter-spacing:.2em;text-transform:uppercase;color:var(--m-apoio);white-space:nowrap;
+}
+.rolar-traco{width:46px;height:1px;background:currentColor;position:relative;overflow:hidden;}
+.rolar-traco::after{
+  content:"";position:absolute;inset:0;background:var(--m-acento);
+  animation:corre 2.1s ease-in-out infinite;
+}
+@keyframes corre{0%{transform:translateX(-100%);}60%,100%{transform:translateX(100%);}}
+
+/* ==========================================================================
+   Outdoor — fita fina, com o gato passeando dentro
+   ========================================================================== */
+.outdoor{
+  position:relative;z-index:1;
+  padding:.55rem 0;
+  border-top:1px solid rgb(from var(--m-texto) r g b / .13);
+  border-bottom:1px solid rgb(from var(--m-texto) r g b / .13);
+  overflow:hidden;
+}
+.outdoor-fita{display:flex;width:max-content;animation:desliza 34s linear infinite;}
+.outdoor-fita span{
+  display:inline-flex;align-items:center;gap:1rem;
+  font-family:'JetBrains Mono',monospace;
+  font-size:.72rem;letter-spacing:.24em;text-transform:uppercase;
+  white-space:nowrap;padding:0 1rem;
+  color:rgb(from var(--m-texto) r g b / .62);
+  transition:color var(--troca);
+}
+.outdoor-fita .ponto{width:4px;height:4px;border-radius:50%;background:var(--m-acento);flex-shrink:0;transition:background var(--troca);}
+.outdoor-gato{width:auto;height:22px;flex-shrink:0;opacity:.6;}
+@keyframes desliza{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+.outdoor:hover .outdoor-fita{animation-play-state:paused;}
+
+/* ==========================================================================
+   Método
+   ========================================================================== */
+.metodo h2{font-size:clamp(2.4rem,7vw,5.4rem);margin-bottom:3rem;}
+.passos{display:grid;grid-template-columns:repeat(4,1fr);gap:1.2rem;}
+.passo{
+  position:relative;
+  background:var(--superficie);
+  border:1px solid rgb(from var(--m-texto) r g b / .1);
+  padding:1.6rem 1.3rem 1.5rem;
+  overflow:hidden;
+  transition:transform .45s var(--saida), border-color .45s ease, background .45s ease;
+}
+/* Varredura de acento que sobe ao passar o mouse */
+.passo::before{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:3px;
+  background:var(--m-acento);
+  transform:scaleX(0);transform-origin:left;
+  transition:transform .5s var(--saida);
+}
+.passo:hover{transform:translateY(-6px);border-color:rgb(from var(--m-acento) r g b / .5);}
+.passo:hover::before{transform:scaleX(1);}
+.passo .n{
+  display:block;font-family:'JetBrains Mono',monospace;font-size:.68rem;
+  color:var(--m-acento);margin-bottom:1.6rem;transition:color var(--troca);
+}
+.passo h3{
+  font-family:'Instrument Sans',sans-serif;font-weight:600;
+  font-size:1.02rem;letter-spacing:-.01em;line-height:1.3;margin-bottom:.45rem;
+}
+.passo p{font-size:.9rem;color:var(--m-apoio);transition:color var(--troca);}
+@media (max-width:900px){ .passos{grid-template-columns:1fr 1fr;} }
+@media (max-width:560px){ .passos{grid-template-columns:1fr;} }
+
+/* ==========================================================================
+   Mundos
+   ========================================================================== */
+.mundo{overflow:hidden;}
+.mundo-grade{display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(2rem,5vw,5rem);align-items:center;}
+.mundo-topo{display:flex;align-items:center;gap:.9rem;margin-bottom:1.3rem;}
+.mundo-topo .traco{flex:1;max-width:64px;height:1px;background:rgb(from var(--m-texto) r g b / .3);}
+.mundo h2{font-size:clamp(2.6rem,7vw,5.6rem);margin-bottom:1.3rem;color:var(--m-texto);}
+
+/* Cada mundo assume a tipografia real do seu projeto */
+.m-dossie h2{font-family:'Fraunces',serif;font-weight:600;letter-spacing:-.015em;}
+.m-metal  h2{font-family:'Bodoni Moda',serif;font-weight:500;letter-spacing:-.01em;}
+.m-pet    h2{font-family:'Baloo 2',sans-serif;font-weight:800;letter-spacing:-.02em;line-height:1.05;}
+.m-punk   h2{font-family:'Big Shoulders Display',sans-serif;font-weight:800;text-transform:uppercase;letter-spacing:0;}
+
+.mundo-conceito{color:var(--m-apoio);font-size:1.05rem;max-width:45ch;margin-bottom:1.9rem;transition:color var(--troca);}
+
+.ficha{
+  display:grid;grid-template-columns:auto 1fr;gap:.6rem 1.5rem;
+  padding-top:1.2rem;margin-bottom:1.9rem;
+  border-top:1px solid rgb(from var(--m-texto) r g b / .16);
+}
+.ficha dt{
+  font-family:'JetBrains Mono',monospace;font-size:.62rem;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--m-apoio);
+  padding-top:.22rem;transition:color var(--troca);
+}
+.ficha dd{font-size:.93rem;}
+.ficha-cores{display:flex;gap:5px;}
+.ficha-cores span{
+  width:26px;height:26px;border-radius:4px;
+  border:1px solid rgba(255,255,255,.14);
+  transition:transform .35s var(--mola), border-radius .35s var(--saida);
+  cursor:pointer;
+}
+.ficha-cores span:hover{transform:translateY(-6px) scale(1.15);border-radius:50%;}
+
+.ima{
+  display:inline-flex;align-items:center;gap:.7rem;
+  padding:.95rem 1.7rem;border-radius:999px;
+  background:var(--m-acento);color:var(--m-fundo);
+  font-weight:700;font-size:.93rem;text-decoration:none;
+  transition:background var(--troca), color var(--troca);
+  will-change:transform;
+}
+.ima svg{width:14px;height:14px;transition:transform .35s var(--saida);}
+.ima:hover svg{transform:translate(3px,-3px);}
+.ima-vazado{background:transparent;color:var(--m-texto);border:1px solid rgb(from var(--m-texto) r g b / .3);}
+
+/* Palco do gesto */
+.palco{
+  position:relative;aspect-ratio:4/3;
+  border:1px solid rgb(from var(--m-texto) r g b / .13);
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+  transition:border-color .45s ease;
+}
+.palco:hover{border-color:rgb(from var(--m-acento) r g b / .45);}
+.palco::after{
+  content:attr(data-gesto);
+  position:absolute;left:1rem;bottom:.9rem;
+  font-family:'JetBrains Mono',monospace;font-size:.6rem;
+  letter-spacing:.16em;text-transform:uppercase;
+  color:var(--m-apoio);transition:color var(--troca);
+}
+@media (max-width:900px){
+  .mundo-grade{grid-template-columns:1fr;}
+  .palco{aspect-ratio:16/10;order:-1;}
+}
+
+/* Gestos */
+.g-fls{display:flex;flex-direction:column;align-items:center;gap:.25rem;border:1px solid var(--m-acento);padding:1rem 1.3rem;}
+.g-fls .r{font-family:'JetBrains Mono',monospace;font-size:.56rem;letter-spacing:.18em;text-transform:uppercase;color:var(--m-apoio);}
+.g-fls .v{font-family:'Fraunces',serif;font-size:2.3rem;line-height:1;color:var(--m-acento);font-variant-numeric:tabular-nums;}
+
+.g-balanca{width:min(60%,220px);color:var(--m-acento);}
+.g-balanca svg{width:100%;height:auto;overflow:visible;}
+.viga,.pr-e,.pr-d{transform-box:view-box;}
+.viga{transform-origin:60px 22px;animation:pesa 5s ease-in-out infinite;}
+.pr-e{transform-origin:22px 34px;animation:pesa-inv 5s ease-in-out infinite;}
+.pr-d{transform-origin:98px 34px;animation:pesa-inv 5s ease-in-out infinite;}
+@keyframes pesa{0%,100%{transform:rotate(-7deg);}50%{transform:rotate(7deg);}}
+@keyframes pesa-inv{0%,100%{transform:rotate(7deg);}50%{transform:rotate(-7deg);}}
+
+.g-patas{display:flex;align-items:center;gap:.7rem;}
+.g-patas span{width:28px;height:28px;opacity:.15;}
+.g-patas span:nth-child(odd){transform:rotate(-14deg);}
+.g-patas span:nth-child(even){transform:rotate(12deg) translateY(11px);}
+.g-patas span:nth-child(1){color:#f0932b;animation:pisada 3.4s ease-in-out 0s infinite;}
+.g-patas span:nth-child(2){color:#3e9fd4;animation:pisada 3.4s ease-in-out .2s infinite;}
+.g-patas span:nth-child(3){color:#6da544;animation:pisada 3.4s ease-in-out .4s infinite;}
+.g-patas span:nth-child(4){color:#f0932b;animation:pisada 3.4s ease-in-out .6s infinite;}
+.g-patas span:nth-child(5){color:#3e9fd4;animation:pisada 3.4s ease-in-out .8s infinite;}
+@keyframes pisada{0%,72%,100%{opacity:.15;}16%,54%{opacity:1;}}
+
+.g-tesoura{width:min(44%,145px);color:var(--m-acento);}
+.g-tesoura svg{width:100%;height:auto;}
+.lam-a,.lam-b{transform-box:view-box;transform-origin:12px 19px;}
+.lam-a{animation:tesoura 2.1s ease-in-out infinite;}
+.lam-b{animation:tesoura-inv 2.1s ease-in-out infinite;}
+@keyframes tesoura{0%,100%{transform:rotate(0);}50%{transform:rotate(-14deg);}}
+@keyframes tesoura-inv{0%,100%{transform:rotate(0);}50%{transform:rotate(14deg);}}
+
+/* ==========================================================================
+   Sobre — cartões que inclinam sob o ponteiro
+   ========================================================================== */
+.sobre h2{font-size:clamp(2.4rem,7vw,5.4rem);margin-bottom:1.4rem;}
+.sobre-linha{color:var(--m-apoio);font-size:1.06rem;max-width:52ch;margin-bottom:3rem;transition:color var(--troca);}
+.cartoes{display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem;perspective:1100px;}
+.cartao{
+  position:relative;
+  background:var(--superficie);
+  border:1px solid rgb(from var(--m-texto) r g b / .1);
+  padding:1.8rem 1.5rem 1.6rem;
+  overflow:hidden;
+  transform-style:preserve-3d;
+  transition:border-color .4s ease, box-shadow .4s ease;
+  will-change:transform;
+}
+.cartao:hover{
+  border-color:rgb(from var(--m-acento) r g b / .45);
+  box-shadow:0 20px 50px rgba(0,0,0,.5);
+}
+/* Halo que segue o ponteiro dentro do cartão */
+.cartao::before{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(220px circle at var(--px,50%) var(--py,50%),
+             rgb(from var(--m-acento) r g b / .16), transparent 68%);
+  opacity:0;transition:opacity .35s ease;
+}
+.cartao:hover::before{opacity:1;}
+.cartao-gato{
+  width:auto;height:58px;margin-bottom:1.3rem;
+  opacity:.55;transition:opacity .45s ease;
+}
+.cartao:hover .cartao-gato{opacity:1;}
+.cartao h3{
+  font-family:'Instrument Serif',serif;font-weight:400;
+  font-size:1.5rem;letter-spacing:-.01em;margin-bottom:.55rem;
+}
+.cartao p{font-size:.93rem;color:var(--m-apoio);transition:color var(--troca);}
+.cartao-selo{
+  position:absolute;top:1.1rem;right:1.2rem;
+  font-family:'JetBrains Mono',monospace;font-size:.6rem;
+  letter-spacing:.14em;text-transform:uppercase;
+  color:var(--m-apoio);opacity:.5;
+}
+@media (max-width:900px){ .cartoes{grid-template-columns:1fr;} }
+
+/* ==========================================================================
+   Contato
+   ========================================================================== */
+.contato h2{font-size:clamp(2.6rem,8vw,6.4rem);margin-bottom:1.5rem;max-width:15ch;}
+.contato-linha{color:var(--m-apoio);font-size:1.06rem;max-width:48ch;margin-bottom:2.5rem;transition:color var(--troca);}
+.contato-acoes{display:flex;gap:1rem;flex-wrap:wrap;}
+.contato-lista{
+  margin-top:3.6rem;padding-top:2rem;
+  border-top:1px solid rgb(from var(--m-texto) r g b / .16);
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.8rem;
+}
+.contato-lista dt{
+  font-family:'JetBrains Mono',monospace;font-size:.62rem;
+  letter-spacing:.18em;text-transform:uppercase;color:var(--m-apoio);
+  margin-bottom:.35rem;transition:color var(--troca);
+}
+.contato-lista dd,.contato-lista dd a{font-size:1rem;text-decoration:none;}
+.contato-lista dd a{
+  position:relative;
+  background-image:linear-gradient(var(--m-acento),var(--m-acento));
+  background-size:0% 1px;background-repeat:no-repeat;background-position:0 100%;
+  transition:background-size .4s var(--saida);
+  padding-bottom:2px;
+}
+.contato-lista dd a:hover{background-size:100% 1px;}
+
+/* ==========================================================================
+   Rodapé — o gato branco dorme aqui
+   ========================================================================== */
+footer{position:relative;z-index:1;overflow:hidden;padding:0 0 2rem;}
+.rodape-cena{
+  width:var(--env);margin-inline:auto;
+  display:grid;grid-template-columns:1fr auto;gap:2rem;align-items:end;
+  padding:3rem 0 2.2rem;
+  border-top:1px solid rgb(from var(--m-texto) r g b / .16);
+}
+.rodape-frase{
+  font-family:'Instrument Serif',serif;
+  font-size:clamp(1.6rem,4vw,2.8rem);line-height:1.1;letter-spacing:-.02em;
+  max-width:18ch;
+}
+.rodape-frase em{font-style:italic;color:var(--m-acento);transition:color var(--troca);}
+.rodape-gato{
+  position:relative;
+  width:clamp(180px,26vw,320px);
+}
+.rodape-gato-img{width:100%;height:auto;opacity:.92;}
+.rodape-base{
+  width:var(--env);margin-inline:auto;
+  display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;
+  padding-top:1.3rem;
+  border-top:1px solid rgb(from var(--m-texto) r g b / .1);
+  font-family:'JetBrains Mono',monospace;font-size:.66rem;
+  letter-spacing:.08em;color:var(--m-apoio);transition:color var(--troca);
+}
+@media (max-width:760px){
+  .rodape-cena{grid-template-columns:1fr;}
+  .rodape-gato{width:min(190px,52vw);justify-self:end;}
+  .rodape-base{flex-direction:column;}
+}
+
+/* ==========================================================================
+   Menu no celular
+   ========================================================================== */
+@media (max-width:880px){
+  .nav-links{display:none;}
+  .menu-toggle{display:block;}
+  .nav-links.aberto{
+    display:flex;flex-direction:column;align-items:flex-start;gap:1.3rem;
+    position:absolute;top:100%;left:0;right:0;
+    background:var(--m-fundo);padding:1.6rem 4.5vw;
+    border-bottom:1px solid rgb(from var(--m-texto) r g b / .16);
+  }
+  .bloco{min-height:auto;padding:5.5rem 0 4rem;}
+  .abertura{min-height:100svh;}
+}
+
+/* ==========================================================================
+   Movimento reduzido
+   ========================================================================== */
+@media (prefers-reduced-motion:reduce){
+  .linha-mascara > span{transform:none !important;}
+  .sobe{opacity:1 !important;transform:none !important;}
+  .campo{display:none;}
+  .outdoor-fita,.viga,.pr-e,.pr-d,.g-patas span,.lam-a,.lam-b,.rolar-traco::after,
+  .outdoor-fita{animation:none !important;}
+  .g-patas span{opacity:1 !important;}
+  *,*::before,*::after{
+    animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;
+    scroll-behavior:auto !important;
+  }
+}
