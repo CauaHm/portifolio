@@ -224,20 +224,31 @@ async function startCreate() {
   else {
     show('connecting');
     $('connectingText').textContent = 'Criando sala…';
-    const Net = useSupa ? SupaHostNet : HostNet;
-    const net = new Net({
-      onOpen: (code) => startLocal(name, net, code),
-      onJoin: (id) => session?.server?.join(id),
-      onMessage: (id, msg) => session?.server?.receive(id, msg),
-      onLeave: (id) => session?.server?.leave(id),
-      onError: (err) => {
-        if (!session || !session.client) errorScreen('Não foi possível criar a sala: ' + (err.type || err.message || err));
-        else console.warn('peer error', err);
-      },
-    }, onlineCfg);
-    try { net.start(); } catch (e) { errorScreen(e.message); }
-    session = { kind: 'host', net, code: null };
+    createHost(name, useSupa ? SupaHostNet : HostNet);
   }
+}
+
+// cria a sala; se o Supabase falhar, tenta o PeerJS
+function createHost(name, Net) {
+  const net = new Net({
+    onOpen: (code) => startLocal(name, net, code),
+    onJoin: (id) => session?.server?.join(id),
+    onMessage: (id, msg) => session?.server?.receive(id, msg),
+    onLeave: (id) => session?.server?.leave(id),
+    onError: (err) => {
+      if (session && session.client) { console.warn('rede', err); return; }
+      if (Net === SupaHostNet) {
+        console.warn('Supabase indisponível, usando PeerJS:', err);
+        $('connectingText').textContent = 'Supabase indisponível, tentando outra conexão…';
+        try { net.close(); } catch (e) { /* ignora */ }
+        createHost(name, HostNet);
+        return;
+      }
+      errorScreen('Não foi possível criar a sala: ' + (err.type || err.message || err));
+    },
+  }, onlineCfg);
+  session = { kind: 'host', net, code: null };
+  try { net.start(); } catch (e) { net.h.onError?.(e); }
 }
 
 function startLocal(name, net, code) {
@@ -288,8 +299,12 @@ async function joinRoom() {
   const name = playerName();
   show('connecting');
   $('connectingText').textContent = `Conectando à sala ${code}…`;
+  connectClient(code, name, useSupa ? SupaClientNet : ClientNet);
+}
+
+// entra na sala; se o Supabase falhar ou não achar a sala, tenta o PeerJS
+function connectClient(code, name, Net) {
   let client = null;
-  const Net = useSupa ? SupaClientNet : ClientNet;
   const net = new Net({
     onOpen: (mode) => {
       client = makeClient((msg) => net.send(msg), false);
@@ -312,10 +327,18 @@ async function joinRoom() {
       client?.receive(msg);
     },
     onClose: (reason) => { if (session && session.client) errorScreen(reason); },
-    onError: (err) => errorScreen(err.message || String(err)),
+    onError: (err) => {
+      if (Net === SupaClientNet && !(session && session.client)) {
+        console.warn('Supabase: ' + (err.message || err) + ' — tentando PeerJS');
+        try { net.close(); } catch (e) { /* ignora */ }
+        connectClient(code, name, ClientNet);
+        return;
+      }
+      errorScreen(err.message || String(err));
+    },
   }, onlineCfg);
   session = { kind: 'client', net, code, client: null };
-  try { net.connect(code); } catch (e) { errorScreen(e.message); }
+  try { net.connect(code); } catch (e) { net.h.onError?.(e); }
 }
 
 function enterGame() {
@@ -498,4 +521,5 @@ function initPause() {
 initMenu();
 initPause();
 if (new URLSearchParams(location.search).has('debug')) window.__pz = () => session;
+window.__pzReady = true;
 show('menu');

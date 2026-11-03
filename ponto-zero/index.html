@@ -2,6 +2,20 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
+  <script>
+    // Sem a barra final (/ponto-zero), os caminhos relativos apontariam para a raiz do site.
+    (function () {
+      var p = location.pathname;
+      if (!/\/$/.test(p) && !/\.html?$/.test(p)) location.replace(p + '/' + location.search + location.hash);
+    })();
+    // guarda erros de carregamento para mostrar no menu
+    window.__pzErrors = [];
+    window.addEventListener('error', function (e) {
+      var t = e.target;
+      if (t && t !== window && (t.src || t.href)) window.__pzErrors.push('não carregou ' + (t.src || t.href).split('/').slice(-2).join('/'));
+      else if (e.message) window.__pzErrors.push(e.message);
+    }, true);
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Ponto Zero — FPS tático no navegador</title>
   <meta name="description" content="FPS tático multiplayer no navegador: mata-mata com bomba, team deathmatch e todos contra todos. Crie uma sala e chame os amigos pelo código.">
@@ -208,5 +222,14 @@
   </section>
 
   <script type="module" src="js/main.js"></script>
+  <script>
+    setTimeout(function () {
+      if (window.__pzReady) return;
+      var m = document.getElementById('netInfo');
+      if (!m) return;
+      m.className = 'warn';
+      m.textContent = 'O jogo não carregou. ' + (window.__pzErrors.length ? window.__pzErrors.join(' | ') : 'Atualize a página (Ctrl+Shift+R). Se continuar, use um navegador atualizado (Chrome, Edge ou Firefox).');
+    }, 6000);
+  </script>
 </body>
 </html>

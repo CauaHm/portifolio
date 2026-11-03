@@ -1,0 +1,5 @@
+{
+  "redirects": [
+    { "source": "/ponto-zero", "destination": "/ponto-zero/", "permanent": false }
+  ]
+}
