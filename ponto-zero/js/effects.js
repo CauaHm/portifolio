@@ -79,6 +79,35 @@ export class Effects {
     scene.add(this.bomb);
     // ---- armas no chão ----
     this.drops = new Map();
+    // ---- fogo da incendiária ----
+    this.fires = new Map();
+    this.scorchMat = new THREE.MeshBasicMaterial({ map: softTexture(), color: 0x000000, transparent: true, opacity: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 });
+  }
+
+  fire(id, p, dur = 7000, r = 3.2) {
+    if (this.fires.has(id)) return;
+    const light = new THREE.PointLight(0xff7a20, 8, 10, 1.6);
+    light.position.set(p[0], p[1] + 0.8, p[2]);
+    this.scene.add(light);
+    const scorch = new THREE.Mesh(new THREE.CircleGeometry(r * 1.05, 24), this.scorchMat);
+    scorch.rotation.x = -Math.PI / 2;
+    scorch.position.set(p[0], p[1] + 0.02, p[2]);
+    this.scene.add(scorch);
+    this.fires.set(id, { p, r, until: performance.now() + dur, light, scorch, acc: 0, crackle: 0 });
+  }
+
+  removeFire(id) {
+    const f = this.fires.get(id);
+    if (!f) return;
+    this.scene.remove(f.light);
+    this.scene.remove(f.scorch);
+    f.scorch.geometry.dispose();
+    this.fires.delete(id);
+    this.burst([f.p[0], f.p[1] + 0.3, f.p[2]], 30, { color: [0.35, 0.33, 0.3], speed: 2, up: 1.5, life: 1.2, gravity: -1 });
+  }
+
+  clearFires() {
+    for (const id of [...this.fires.keys()]) this.removeFire(id);
   }
 
   // ---------- traçantes ----------
@@ -253,13 +282,13 @@ export class Effects {
     for (let i = this.tracers.length - 1; i >= 0; i--) {
       const t = this.tracers[i];
       t.t += dt;
-      const head = Math.min(t.len, t.t * speed);
-      const tail = Math.max(0, head - segLen);
-      if (tail >= t.len - 0.01) { this.tracers.splice(i, 1); continue; }
+      // a cauda continua andando depois que a ponta chega no impacto; some quando passa do fim
+      if (t.t * speed - segLen >= t.len || t.t > 1.5) { this.tracers.splice(i, 1); continue; }
     }
     for (const t of this.tracers) {
-      const head = Math.min(t.len, t.t * speed);
-      const tail = Math.max(0, head - segLen);
+      const run = t.t * speed;
+      const head = Math.min(t.len, run);
+      const tail = Math.min(t.len, Math.max(0, run - segLen));
       const o = t.o, d = t.d;
       this.tracerPos.set([o[0] + d[0] * tail, o[1] + d[1] * tail, o[2] + d[2] * tail, o[0] + d[0] * head, o[1] + d[1] * head, o[2] + d[2] * head], ti * 6);
       this.tracerCol.set([0, 0, 0, t.color[0], t.color[1], t.color[2]], ti * 6);
@@ -326,6 +355,27 @@ export class Effects {
         p.s.scale.set(sz, sz, 1);
         p.s.material.opacity = 0.92 * fade * Math.min(1, s.age / 300);
         p.s.material.rotation += p.rot * dt;
+      }
+    }
+    // fogo
+    for (const [id, f] of this.fires) {
+      if (now > f.until) { this.removeFire(id); continue; }
+      f.acc += dt * 90;
+      while (f.acc >= 1) {
+        f.acc -= 1;
+        const a = Math.random() * Math.PI * 2, rr = Math.sqrt(Math.random()) * f.r;
+        const x = f.p[0] + Math.cos(a) * rr, z = f.p[2] + Math.sin(a) * rr;
+        const hot = Math.random();
+        if (this.parts.length >= MAX_PARTICLES) this.parts.shift();
+        this.parts.push({
+          x, y: f.p[1] + 0.05, z, vx: (Math.random() - 0.5) * 0.4, vy: 1.2 + Math.random() * 1.8, vz: (Math.random() - 0.5) * 0.4,
+          life: 0.35 + Math.random() * 0.5, age: 0, c: hot > 0.5 ? [1, 0.75, 0.25] : [1, 0.35, 0.08], g: -1.5,
+        });
+      }
+      f.light.intensity = 6 + Math.random() * 5;
+      if (Math.random() < dt * 3) {
+        const a = Math.random() * Math.PI * 2;
+        this.burst([f.p[0] + Math.cos(a) * f.r * 0.5, f.p[1] + 1.2, f.p[2] + Math.sin(a) * f.r * 0.5], 2, { color: [0.2, 0.19, 0.18], speed: 0.6, up: 1, life: 1.8, gravity: -0.8 });
       }
     }
     // granadas

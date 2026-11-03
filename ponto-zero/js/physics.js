@@ -276,6 +276,7 @@ export function nadeStep(map, n) {
   let ny = n.y + n.vy * dt;
   if (ny < NADE_R || pointSolid(map, n.x, ny, n.z)) {
     if (Math.abs(n.vy) > 1.2) bounced = true;
+    if (n.vy < 0) n.landed = true;
     n.vy = -n.vy * 0.38;
     n.vx *= 0.72; n.vz *= 0.72;
     if (Math.abs(n.vy) < 0.6) n.vy = 0;
@@ -291,6 +292,7 @@ function pointSolid(map, x, y, z) {
 }
 
 export function nadeShouldDetonate(n, fuse) {
+  if (n.type === 'molotov') return n.landed || n.t >= fuse;
   if (n.type === 'smoke') {
     const sp = Math.abs(n.vx) + Math.abs(n.vy) + Math.abs(n.vz);
     return (n.t >= fuse && sp < 0.4) || n.t >= 4;

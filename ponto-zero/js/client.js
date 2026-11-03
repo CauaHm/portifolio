@@ -461,7 +461,7 @@ export class GameClient {
 
   inaccuracy(W) {
     const sp = Math.hypot(this.body.vx, this.body.vz);
-    let a = W.kind === 'sniper' && this.scope ? W.scopedInacc : W.inacc;
+    let a = this.scope && W.scopedInacc != null ? W.scopedInacc : W.inacc;
     const mv = Math.max(0, (sp / W.speed - 0.3) / 0.7);
     a += W.move * Math.min(1.2, mv) * (W.kind === 'sniper' && this.scope ? 1.5 : 1);
     if (!this.body.onGround) a += W.air;
@@ -527,8 +527,8 @@ export class GameClient {
     if (!W) return;
     // botão direito
     if (rightEdge) {
-      if (W.kind === 'sniper') {
-        this.scope = (this.scope + 1) % 3;
+      if (W.scope) {
+        this.scope = (this.scope + 1) % (W.scope.length + 1);
         SFX.playClick();
       } else if (W.kind === 'knife' && now >= this.nextFire && now >= this.drawUntil) {
         this.knife(true);
@@ -586,7 +586,7 @@ export class GameClient {
     }
     this.send({ t: 'fire', w: W.id, o: [+muzzle.x.toFixed(2), +muzzle.y.toFixed(2), +muzzle.z.toFixed(2)], e: ends, h: hits });
     SFX.playShot(W.snd, null);
-    this.vm.fire(W.kind === 'sniper' || W.kind === 'shotgun' ? 1.4 : W.kind === 'pistol' ? 0.7 : 0.55);
+    this.vm.fire(W.kind === 'sniper' || W.kind === 'shotgun' ? 1.4 : W.kind === 'pistol' ? 0.7 : W.kind === 'lmg' ? 0.65 : 0.55);
     // recuo
     this.spray++;
     const n = this.spray;
@@ -743,9 +743,10 @@ export class GameClient {
       }
       case 'boom': return this.onBoom(m);
       case 'drop+': this.fx.addDrop(m.i, m.w, m.p); break;
+      case 'fireOut': this.fx.removeFire(m.i); break;
       case 'drop-': this.fx.removeDrop(m.i); break;
       case 'clear':
-        this.fx.clearDrops(); this.fx.clearNades(); this.fx.clearSmokes(); this.fx.clearDecals();
+        this.fx.clearDrops(); this.fx.clearNades(); this.fx.clearSmokes(); this.fx.clearDecals(); this.fx.clearFires();
         this.nades.clear();
         break;
       case 'bomb': return this.onBomb(m);
@@ -1065,6 +1066,9 @@ export class GameClient {
     } else if (m.type === 'smoke') {
       this.fx.smoke(p);
       SFX.playSmoke(pos);
+    } else if (m.type === 'molotov') {
+      this.fx.fire(m.i, [p[0], Math.max(0, p[1] - 0.08), p[2]]);
+      SFX.playFireStart(pos);
     }
     void n;
   }
@@ -1097,6 +1101,7 @@ export class GameClient {
     this.updateLocal(dt, now);
     this.updateEnts(dt, now);
     this.updateNades(dt);
+    this.updateFires(dt);
     this.updateBomb(now);
     this.updateCamera(dt, now);
     this.fx.update(dt, this.camera.position);
@@ -1243,6 +1248,16 @@ export class GameClient {
     }
   }
 
+  updateFires(dt) {
+    for (const f of this.fx.fires.values()) {
+      f.crackle -= dt;
+      if (f.crackle <= 0) {
+        f.crackle = 0.18 + Math.random() * 0.25;
+        SFX.playCrackle({ x: f.p[0], y: f.p[1] + 0.5, z: f.p[2] });
+      }
+    }
+  }
+
   updateBomb(now) {
     const b = this.state.bomb;
     if (b.s === 'planted' && b.p) {
@@ -1366,7 +1381,7 @@ export class GameClient {
       limit: st.settings?.killLimit, roundsToWin: st.settings?.roundsToWin, leader, myK,
       team: me.team, canBuy: this.canBuyHere(), buyRem: Math.max(0, this.buyEndsAt - now) / 1000,
       inaccuracy: W && W.kind !== 'knife' ? this.inaccuracy(W) : 0.01,
-      scope: this.scope && W && W.kind === 'sniper',
+      scope: !!(this.scope && W && W.scope),
       spray: this.spray,
       hint: this.hintText(),
       ping: this.lastPing,

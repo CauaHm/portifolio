@@ -7,7 +7,7 @@ import {
 import { WEAPONS, NADES, GEAR, ECON, ROUND, MODES, BOT_NAMES, DIFFICULTY, SNAP_RATE } from './config.js';
 import { BotBrain } from './bots.js';
 
-export const WLIST = ['knife', 'p9', 'lince', 'ferrao', 'trovao', 'k47', 't4', 'gaviao', 'he', 'flash', 'smoke', 'bomb'];
+export const WLIST = [...Object.keys(WEAPONS), ...Object.keys(NADES), 'bomb'];
 const r2 = (v) => Math.round(v * 100) / 100;
 const r3 = (v) => Math.round(v * 1000) / 1000;
 
@@ -24,6 +24,8 @@ export class Server {
     this.drops = new Map();
     this.nades = new Map();
     this.smokes = [];
+    this.fires = [];
+    this.fireTick = 0;
     this.noises = [];
     this.bomb = { state: 'none' };
     this.phase = 'warmup';
@@ -397,7 +399,7 @@ export class Server {
       }
     } else if (nd) {
       if (p.inv.nades.includes(item)) return 'Você já tem essa granada.';
-      if (p.inv.nades.length >= 3) return 'Limite de granadas.';
+      if (p.inv.nades.length >= 4) return 'Limite de granadas.';
       if (price > p.money) return 'Dinheiro insuficiente.';
       p.inv.nades.push(item);
       if (!this.isEcon() && !p.bot) {
@@ -731,17 +733,18 @@ export class Server {
 
   botBuy(p) {
     const team = p.team;
+    const pick = (list) => list[(Math.random() * list.length) | 0];
+    const allowed = (w) => !(this.teamMode() && WEAPONS[w].team && WEAPONS[w].team !== team);
     if (!this.isEcon()) {
       // modos sem economia: arma aleatória
-      const opts = ['k47', 't4', 'ferrao', 'trovao', 'gaviao', 'k47', 't4'];
-      let w = opts[(Math.random() * opts.length) | 0];
-      if (this.teamMode() && WEAPONS[w].team && WEAPONS[w].team !== team) w = team === 'atk' ? 'k47' : 't4';
-      this.buy(p, w, true);
+      const opts = ['k47', 't4', 'pardal', 'sabia', 'coruja', 'ferrao', 'corisco', 'siri', 'trovao', 'bigorna', 'gaviao', 'andorinha', 'urubu', 'sucuri', 'k47', 't4'].filter(allowed);
+      this.buy(p, pick(opts), true);
       this.buy(p, 'vesthelm', true);
       if (Math.random() < 0.4) this.buy(p, 'he', true);
       return;
     }
     const rifle = team === 'atk' ? 'k47' : 't4';
+    const cheapRifle = team === 'atk' ? 'pardal' : 'sabia';
     const tryBuy = (item) => {
       let price = (WEAPONS[item] || NADES[item] || GEAR[item]).price;
       if (item === 'vesthelm' && p.armor >= 100) price = 350;
@@ -752,16 +755,20 @@ export class Server {
     };
     if (!p.inv.primary) {
       const m = p.money;
-      if (m >= 5750 && Math.random() < 0.18) tryBuy('gaviao');
-      else if (m >= WEAPONS[rifle].price + 1000) tryBuy(rifle);
-      else if (m >= 1900 && Math.random() < 0.7) tryBuy('ferrao');
-      else if (m >= 1750 && Math.random() < 0.5) tryBuy('trovao');
+      const r = Math.random();
+      if (m >= 6000 && r < 0.12) tryBuy('gaviao');
+      else if (m >= 6000 && r < 0.18) tryBuy('urubu');
+      else if (m >= 6200 && r < 0.22) tryBuy('sucuri');
+      else if (m >= WEAPONS[rifle].price + 1000) tryBuy(r < 0.82 ? rifle : 'coruja');
+      else if (m >= 2800 && r < 0.6) tryBuy(cheapRifle);
+      else if (m >= 2700 && r < 0.75) tryBuy('andorinha');
+      else if (m >= 3300 && r < 0.85) tryBuy('corisco');
+      else if (m >= 1900) tryBuy(pick(['ferrao', 'siri', 'trovao', 'ferrao']));
     }
     if (p.armor < 100 || !p.helmet) { if (!tryBuy('vesthelm') && p.armor < 100) tryBuy('vest'); }
     if (team === 'def' && !p.kit && Math.random() < 0.5) tryBuy('kit');
-    if (!p.inv.primary && p.inv.secondary?.w !== 'lince' && Math.random() < 0.6) tryBuy('lince');
+    if (!p.inv.primary && p.inv.secondary?.w === 'p9' && Math.random() < 0.6) tryBuy(pick(['lince', 'coral', 'marimbondo']));
     if (p.money >= 300 && Math.random() < 0.5) tryBuy('he');
-    p.money = Math.max(0, p.money);
   }
 
   // ---------------- ciclo de partida ----------------
@@ -786,6 +793,7 @@ export class Server {
     for (const id of [...this.drops.keys()]) this.removeDrop(id);
     this.nades.clear();
     this.smokes = [];
+    this.fires = [];
     this.out.broadcast({ t: 'clear' });
   }
 
@@ -918,7 +926,8 @@ export class Server {
         if (pw && pw.team && this.teamMode() && pw.team !== p.team) prim = p.team === 'def' ? 't4' : 'k47';
         if (!keepInv || !p.inv.primary) p.inv.primary = { w: prim, u: this.uid++ };
         if (lo.secondary) p.inv.secondary = { w: lo.secondary, u: this.uid++ };
-        if (lo.nades) p.inv.nades = [...lo.nades];
+        // granadas: as últimas escolhidas, ou luz + fumaça
+        p.inv.nades = lo.nades ? [...lo.nades] : ['flash', 'smoke'];
       }
       if (p.bot) this.botBuy(p);
     }
@@ -1040,6 +1049,21 @@ export class Server {
       }
     }
     this.smokes = this.smokes.filter((s) => s.until > this.now);
+    this.fires = this.fires.filter((f) => f.until > this.now);
+    this.fireTick += dt;
+    if (this.fireTick >= 0.25 && this.fires.length) {
+      this.fireTick = 0;
+      for (const f of this.fires) {
+        const owner = this.players.get(f.owner);
+        for (const v of this.players.values()) {
+          if (!v.alive) continue;
+          if (owner && v !== owner && !this.isEnemy(owner, v)) continue;
+          if (Math.hypot(v.x - f.x, v.z - f.z) > f.r || Math.abs(v.y - f.y) > 1.3) continue;
+          this.applyDamage(v, owner, 9, 0, 'molotov', false);
+          if (v.brain) v.brain.onDamaged(owner || v);
+        }
+      }
+    } else if (!this.fires.length) this.fireTick = 0;
     this.noises = this.noises.filter((n) => this.now - n.time < 3000);
 
     // rede
@@ -1154,6 +1178,16 @@ export class Server {
       }
     } else if (n.type === 'smoke') {
       this.smokes.push({ x: n.x, y: n.y + 1.2, z: n.z, r: 4.3, start: this.now, until: this.now + 18000 });
+      // fumaça apaga o fogo
+      for (const f of this.fires) {
+        if (Math.hypot(f.x - n.x, f.z - n.z) < f.r + 3.5) { f.until = this.now; this.out.broadcast({ t: 'fireOut', i: f.id }); }
+      }
+    } else if (n.type === 'molotov') {
+      const inSmoke = this.smokes.some((s) => Math.hypot(s.x - n.x, s.z - n.z) < s.r + 1);
+      if (!inSmoke) {
+        const y = Math.max(0, n.y - 0.08);
+        this.fires.push({ id: n.id, x: n.x, y, z: n.z, r: 3.2, until: this.now + 7000, owner: n.owner });
+      } else this.out.broadcast({ t: 'fireOut', i: n.id });
     }
   }
 

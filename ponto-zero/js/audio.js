@@ -135,6 +135,8 @@ const SHOT = {
   rifle: { f: 2600, d: 0.14, g: 0.95, thump: 120, tg: 0.75, wet: 0.4 },
   rifle2: { f: 3000, d: 0.12, g: 0.85, thump: 135, tg: 0.65, wet: 0.38 },
   sniper: { f: 1800, d: 0.45, g: 1.2, thump: 70, tg: 1.2, wet: 0.8 },
+  scout: { f: 2500, d: 0.3, g: 1.0, thump: 95, tg: 0.9, wet: 0.65 },
+  lmg: { f: 2300, d: 0.16, g: 1.0, thump: 100, tg: 0.85, wet: 0.45 },
 };
 
 export function playShot(kind, pos) {
@@ -343,4 +345,22 @@ export function playChat() {
   if (!ctx) return;
   const dest = out(null, 1, 0);
   tone(dest, ctx.currentTime, 0.08, { type: 'sine', freq: 1400, gain: 0.12 });
+}
+
+export function playFireStart(pos) {
+  if (!ctx) return;
+  const dest = out(pos, 5, 0.3);
+  if (!dest) return;
+  const t = ctx.currentTime;
+  noise(dest, t, 0.6, { type: 'lowpass', freq: 1200, freqEnd: 300, gain: 0.9, attack: 0.01 });
+  tone(dest, t, 0.15, { type: 'triangle', freq: 1800, freqEnd: 600, gain: 0.2 }); // vidro
+}
+
+export function playCrackle(pos) {
+  if (!ctx) return;
+  const dest = out(pos, 3, 0.1);
+  if (!dest) return;
+  const t = ctx.currentTime;
+  noise(dest, t, 0.25, { type: 'bandpass', freq: 600 + Math.random() * 600, q: 0.8, gain: 0.35, attack: 0.02 });
+  if (Math.random() < 0.5) noise(dest, t + Math.random() * 0.1, 0.03, { type: 'highpass', freq: 3000, gain: 0.3 });
 }
