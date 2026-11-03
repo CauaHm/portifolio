@@ -1,5 +1,5 @@
 // Efeitos visuais: traçantes, partículas, marcas de tiro, explosões, fumaça, granadas, bomba, armas no chão.
-import * as THREE from 'three';
+import * as THREE from '../vendor/three.module.min.js';
 import { buildGun, muzzleFlashTexture, softTexture } from './models.js';
 
 const MAX_TRACERS = 64;

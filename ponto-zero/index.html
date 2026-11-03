@@ -24,7 +24,6 @@
   <link rel="stylesheet" href="css/game.css">
   <script src="vendor/peerjs.min.js"></script>
   <script src="vendor/supabase.min.js"></script>
-  <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
 </head>
 <body>
   <!-- ============ MENU ============ -->
@@ -222,15 +221,37 @@
     </div>
   </section>
 
-  <script type="module" src="js/main.js"></script>
   <script>
-    setTimeout(function () {
+    window.__pzShowError = function () {
       if (window.__pzReady) return;
       var m = document.getElementById('netInfo');
       if (!m) return;
       m.className = 'warn';
       m.textContent = 'O jogo não carregou. ' + (window.__pzErrors.length ? window.__pzErrors.join(' | ') : 'Atualize a página (Ctrl+Shift+R). Se continuar, use um navegador atualizado (Chrome, Edge ou Firefox).');
-    }, 6000);
+    };
+    setTimeout(window.__pzShowError, 8000);
+  </script>
+  <script type="module">
+    // import dinâmico: se algum arquivo falhar, a mensagem diz exatamente qual e por quê
+    import('./js/main.js').catch(function (e) {
+      var msg = String((e && e.message) || e);
+      // o navegador só cita o main.js: testa cada arquivo para achar o culpado
+      var files = ['main', 'server', 'client', 'hud', 'net', 'net-supabase', 'online-config', 'config', 'audio', 'map',
+        'physics', 'bots', 'render-map', 'avatar', 'viewmodel', 'effects', 'models'].map(function (f) { return 'js/' + f + '.js'; });
+      files.push('vendor/three.module.min.js');
+      Promise.all(files.map(function (f) {
+        return fetch(f, { cache: 'no-store' }).then(function (r) {
+          var ct = r.headers.get('content-type') || '';
+          if (!r.ok) return f + ' (erro ' + r.status + ')';
+          if (ct.indexOf('javascript') < 0) return f + ' (tipo ' + ct + ')';
+          return null;
+        }).catch(function () { return f + ' (sem conexão)'; });
+      })).then(function (bad) {
+        bad = bad.filter(Boolean);
+        window.__pzErrors.push(bad.length ? 'Arquivos com problema: ' + bad.join(', ') : msg + ' — navegador: ' + navigator.userAgent.replace(/^Mozilla\/5.0 /, '').slice(0, 120));
+        window.__pzShowError();
+      });
+    });
   </script>
 </body>
 </html>

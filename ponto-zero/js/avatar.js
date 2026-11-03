@@ -1,5 +1,5 @@
 // Personagens em terceira pessoa (bonecos low-poly originais).
-import * as THREE from 'three';
+import * as THREE from '../vendor/three.module.min.js';
 import { buildGun, part } from './models.js';
 import { TEAMS } from './config.js';
 

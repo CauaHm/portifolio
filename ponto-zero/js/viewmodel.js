@@ -1,5 +1,5 @@
 // Arma em primeira pessoa (cena própria renderizada por cima do mundo).
-import * as THREE from 'three';
+import * as THREE from '../vendor/three.module.min.js';
 import { buildGun, part, muzzleFlashTexture } from './models.js';
 
 const SLEEVE = { atk: 0xb0723d, def: 0x34557f, ffa: 0x6b6f76, spec: 0x6b6f76 };

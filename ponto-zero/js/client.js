@@ -1,5 +1,5 @@
 // Cliente do jogo: renderização, entrada, arma local, interpolação dos outros jogadores, HUD e som.
-import * as THREE from 'three';
+import * as THREE from '../vendor/three.module.min.js';
 import { GameMap } from './map.js';
 import { buildMapMeshes, buildSky } from './render-map.js';
 import {

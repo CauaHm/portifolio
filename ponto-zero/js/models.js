@@ -1,5 +1,5 @@
 // Modelos low-poly originais das armas e objetos (feitos com primitivas).
-import * as THREE from 'three';
+import * as THREE from '../vendor/three.module.min.js';
 
 const matCache = new Map();
 export function mat(color, opts = {}) {

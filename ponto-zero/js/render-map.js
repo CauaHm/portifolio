@@ -1,5 +1,5 @@
 // Geometria e texturas procedurais do mapa (nada de arquivos de imagem).
-import * as THREE from 'three';
+import * as THREE from '../vendor/three.module.min.js';
 import { CELL, GW, GH, OX, OZ } from './map.js';
 
 function canvasTex(size, draw, repeat = true) {
