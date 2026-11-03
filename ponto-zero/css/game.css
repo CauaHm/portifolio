@@ -314,3 +314,23 @@ input[type=color] { width: 48px; height: 32px; border: 0; background: none; padd
 .warnTxt { color: #ffb36b; }
 .roomEmpty small { color: #ffb36b; }
 #pauseNet { color: var(--muted); font-size: 12px; }
+
+/* convite */
+.inviteCode { color: var(--accent); font-family: var(--mono); letter-spacing: 0.2em; }
+
+/* jogadores na pausa */
+.playersBox { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 4px; }
+.playersBox h3 small { font-weight: 600; text-transform: none; letter-spacing: 0; }
+#playersList { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; }
+.plRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); font-size: 14px; }
+.plRow .pn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plRow .tag { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: rgba(255, 255, 255, 0.1); color: var(--muted); margin-left: 6px; }
+.plRow .btn { padding: 4px 8px; font-size: 12px; }
+.pauseVote { margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: rgba(240, 138, 60, 0.12); border: 1px solid rgba(240, 138, 60, 0.4); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 14px; }
+
+/* painel de votação no HUD */
+#votePanel { position: absolute; left: 12px; top: 232px; width: 230px; background: rgba(10, 12, 16, 0.82); border: 1px solid rgba(240, 138, 60, 0.6); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; font-size: 13px; text-shadow: none; }
+#votePanel small { color: var(--muted); font-weight: 600; font-size: 11px; }
+#votePanel .vbar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.1); display: flex; overflow: hidden; margin: 3px 0; }
+#votePanel .vy { background: #4dff7a; }
+#votePanel .vn { background: #ff4a4a; margin-left: auto; }

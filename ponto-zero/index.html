@@ -70,9 +70,29 @@
           <span><kbd>Tab</kbd></span><span>Placar</span>
           <span><kbd>Y</kbd> / <kbd>U</kbd></span><span>Chat geral / do time</span>
           <span><kbd>M</kbd></span><span>Trocar de time</span>
+          <span><kbd>J</kbd> / <kbd>K</kbd></span><span>Votar sim / não (votação para expulsar)</span>
           <span><kbd>Esc</kbd></span><span>Menu</span>
         </div>
       </details>
+    </div>
+  </section>
+
+  <!-- ============ CONVITE (link com ?sala=) ============ -->
+  <section id="invite" class="screen">
+    <div class="menuBg"></div>
+    <div class="menuPanel">
+      <header class="brand">
+        <div class="logo"><span class="ring"></span>PONTO<b>ZERO</b></div>
+        <p>Você foi convidado para a sala <b id="inviteCode" class="inviteCode"></b></p>
+      </header>
+      <label class="field">
+        <span>Seu nome</span>
+        <input id="inviteName" maxlength="16" autocomplete="off" spellcheck="false">
+      </label>
+      <div class="menuActions">
+        <button id="btnInviteJoin" class="btn primary">Entrar na sala</button>
+        <button id="btnInviteMenu" class="btn ghost">Ir para o menu</button>
+      </div>
     </div>
   </section>
 
@@ -89,6 +109,7 @@
           <select id="createRounds"><option value="3">3 (rápida)</option><option value="5">5</option><option value="8">8</option><option value="13">13 (longa)</option></select>
         </label>
         <label class="field" id="createLimitRow"><span>Limite de abates</span><select id="createLimit"></select></label>
+        <label class="field" id="createMaxRow"><span>Máximo de jogadores na sala</span><select id="createMax"></select></label>
       </div>
       <div class="rowBtns">
         <button id="btnCreateBack" class="btn ghost">Voltar</button>
@@ -137,6 +158,7 @@
       <div id="buyHint" style="display:none"></div>
       <div id="progress" style="display:none"><div id="progressLabel"></div><div class="bar"><div id="progressBar"></div></div></div>
       <div id="spectate" style="display:none"></div>
+      <div id="votePanel" style="display:none"></div>
 
       <div id="chatLog"></div>
       <div id="chatBox" style="display:none"><span id="chatLabel">Todos:</span><input id="chatInput" maxlength="120" autocomplete="off"></div>
@@ -193,6 +215,7 @@
               <label class="field"><span>Tamanho</span><input id="optCrossSize" type="range" min="3" max="16" step="1"></label>
               <label class="check"><input id="optDot" type="checkbox"> Ponto</label>
             </div>
+            <label class="check"><input id="optFull" type="checkbox"> Tela cheia ao jogar (impede o Ctrl+W de fechar a aba)</label>
           </div>
           <div id="hostPanel">
             <h3>Partida (host)</h3>
@@ -204,6 +227,7 @@
                 <select id="pauseRounds"><option value="3">3</option><option value="5">5</option><option value="8">8</option><option value="13">13</option></select>
               </label>
               <label class="field" id="pauseLimitRow"><span>Limite</span><select id="pauseLimit"></select></label>
+              <label class="field"><span>Máx. jogadores</span><select id="pauseMax"></select></label>
             </div>
             <p id="warmupNote" class="note">Aquecimento: todos renascem à vontade. Quando a galera entrar, inicie a partida.</p>
             <div class="rowBtns">
@@ -211,6 +235,11 @@
               <button id="btnStartMatch" class="btn primary">Iniciar partida</button>
             </div>
           </div>
+        </div>
+        <div id="playersBox" class="playersBox">
+          <h3>Jogadores na sala <small id="playersCount"></small></h3>
+          <div id="playersList"></div>
+          <div id="pauseVote" class="pauseVote" style="display:none"></div>
         </div>
         <div class="rowBtns">
           <button id="btnLeave" class="btn ghost">Sair da partida</button>

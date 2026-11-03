@@ -45,14 +45,36 @@ export function supabaseReady(cfg) {
   return !!(cfg && cfg.supabaseUrl && cfg.supabaseAnonKey && window.supabase && window.RTCPeerConnection);
 }
 
+// Duas conexões separadas: uma para o jogo (sala) e outra para a lista de salas do menu.
+// O supabase-js devolve o MESMO canal quando o nome se repete; com uma conexão só, o anúncio
+// do host e a lista do menu dividiam o canal da lista e o anúncio sumia.
 let sbClient = null;
-function client(cfg) {
-  if (sbClient) return sbClient;
-  sbClient = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+let sbLobbyClient = null;
+function makeClient(cfg, storageKey) {
+  return window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey },
     realtime: { params: { eventsPerSecond: 60 } },
   });
+}
+function client(cfg) {
+  if (!sbClient) sbClient = makeClient(cfg, 'pz-game');
   return sbClient;
+}
+function lobbyClient(cfg) {
+  if (!sbLobbyClient) sbLobbyClient = makeClient(cfg, 'pz-lobby');
+  return sbLobbyClient;
+}
+
+// Diagnóstico: diz se a chave é aceita pelo projeto (ajuda a explicar falhas do Realtime)
+export async function probeSupabase(cfg) {
+  try {
+    const r = await fetch(cfg.supabaseUrl.replace(/\/$/, '') + '/auth/v1/settings', { headers: { apikey: cfg.supabaseAnonKey } });
+    if (r.status === 401 || r.status === 403) return 'a chave não é aceita por esse projeto (erro ' + r.status + ')';
+    if (!r.ok) return 'o projeto respondeu com erro ' + r.status;
+    return 'chave ok; confira se o Realtime está ligado e com acesso público aos canais';
+  } catch (e) {
+    return 'sem conexão com o servidor do Supabase';
+  }
 }
 
 function uid() {
@@ -269,10 +291,10 @@ export class SupaHostNet {
     }
   }
 
-  kick(id) {
+  kick(id, why) {
     const peer = this.byId.get(id);
     if (peer) {
-      this._sendSig(peer.cid, { type: 'kick' });
+      this._sendSig(peer.cid, { type: 'kick', why: why || '' });
       setTimeout(() => this._drop(peer), 300);
     }
   }
@@ -382,7 +404,7 @@ export class SupaClientNet {
     } else if (p.type === 'hello') {
       if (p.mode === 'relay' && this.mode !== 'relay') { this.pc?.close(); this.pc = null; this._open('relay'); }
     } else if (p.type === 'kick') {
-      this._end('Você foi removido da sala pelo host.');
+      this._end(p.why || 'Você foi removido da sala.');
     }
   }
 
@@ -445,7 +467,7 @@ export class LobbyWatcher {
 
   async start() {
     try {
-      const sb = client(this.cfg);
+      const sb = lobbyClient(this.cfg);
       this.ch = sb.channel(LOBBY, { config: { presence: { key: 'viewer-' + uid(), enabled: true } } });
       this.ch.on('presence', { event: 'sync' }, () => this._emit());
       await subscribe(this.ch);
@@ -468,7 +490,7 @@ export class LobbyWatcher {
   }
 
   stop() {
-    try { if (this.ch) sbClient?.removeChannel(this.ch); } catch (e) { /* ignora */ }
+    try { if (this.ch) sbLobbyClient?.removeChannel(this.ch); } catch (e) { /* ignora */ }
     this.ch = null;
   }
 }

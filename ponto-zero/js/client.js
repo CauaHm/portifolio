@@ -14,6 +14,9 @@ import { WLIST } from './server.js';
 
 const DEG = Math.PI / 180;
 const SLOT_KEYS = { Digit1: 'primary', Digit2: 'secondary', Digit3: 'knife', Digit4: 'nade', Digit5: 'bomb' };
+// Teclas capturadas em tela cheia (Keyboard Lock): impede Ctrl+W, Ctrl+T, Ctrl+N, Ctrl+R etc.
+const LOCK_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyT', 'KeyN', 'KeyR', 'KeyQ', 'KeyE', 'KeyF', 'KeyG', 'KeyH', 'KeyJ',
+  'KeyK', 'KeyL', 'KeyP', 'KeyU', 'KeyY', 'KeyB', 'KeyC', 'KeyM', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Tab', 'Space'];
 
 export class GameClient {
   constructor({ canvas, hud, send, settings, callbacks }) {
@@ -79,6 +82,7 @@ export class GameClient {
     this.nextBeep = 0;
     this.nades = new Map();
     this.nadeAcc = 0;
+    this.vote = null;
 
     // arma
     this.nextFire = 0;
@@ -154,6 +158,8 @@ export class GameClient {
     cancelAnimationFrame(this.raf);
     this._unbind();
     if (document.pointerLockElement) document.exitPointerLock();
+    try { navigator.keyboard?.unlock?.(); } catch (e) { /* ignora */ }
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     this.renderer.dispose();
   }
 
@@ -165,6 +171,21 @@ export class GameClient {
 
   lock() {
     if (this.ui.buy || this.ui.chat || this.ui.team) return;
+    // tela cheia + Keyboard Lock: o navegador deixa de fechar a aba com Ctrl+W
+    const de = document.documentElement;
+    if (this.opts.fullscreen !== false && !document.fullscreenElement && de.requestFullscreen) {
+      de.requestFullscreen({ navigationUI: 'hide' }).then(() => {
+        if (navigator.keyboard?.lock) navigator.keyboard.lock(LOCK_KEYS).catch(() => {});
+        this._pointerLock();
+      }).catch(() => this._pointerLock());
+      return;
+    }
+    if (document.fullscreenElement && navigator.keyboard?.lock) navigator.keyboard.lock(LOCK_KEYS).catch(() => {});
+    this._pointerLock();
+  }
+
+  _pointerLock() {
+    if (document.pointerLockElement === this.canvas) return;
     try {
       const r = this.canvas.requestPointerLock({ unadjustedMovement: true });
       if (r && r.catch) r.catch(() => { try { this.canvas.requestPointerLock(); } catch (e) { /* ignora */ } });
@@ -280,13 +301,26 @@ export class GameClient {
       this.openChat(code === 'KeyU');
       return;
     }
+    if (this.vote && this.locked && (code === 'KeyJ' || code === 'KeyK')) {
+      this.castVote(code === 'KeyJ');
+      return;
+    }
     if (!this.locked) return;
     this.keys[code] = true;
-    if (['Space', 'ControlLeft', 'ControlRight'].includes(code)) e.preventDefault();
+    if (['Space', 'ControlLeft', 'ControlRight'].includes(code) || e.ctrlKey) e.preventDefault();
     if (SLOT_KEYS[code]) this.equip(SLOT_KEYS[code]);
     if (code === 'KeyQ') this.equip(this.lastSlot);
     if (code === 'KeyR') this.startReload();
     if (code === 'KeyG') this.dropCurrent();
+  }
+
+  startVote(targetId) {
+    this.send({ t: 'voteStart', target: targetId });
+  }
+
+  castVote(yes) {
+    if (!this.vote || this.vote.target === this.me.id) return;
+    this.send({ t: 'voteCast', yes });
   }
 
   toggleBuy(force) {
@@ -803,7 +837,25 @@ export class GameClient {
       case 'buyfail': this.hud.toast(m.r); break;
       case 'msg': this.hud.centerMsg(m.text, m.dur || 3); break;
       case 'pong': this.lastPing = Math.round(performance.now() - m.c); break;
-      case 'kicked': this.cb.onKicked?.(); break;
+      case 'kicked': this.cb.onKicked?.(m.why ? `Você foi expulso ${m.why}.` : 'Você foi removido da sala.'); break;
+      case 'full': this.cb.onKicked?.('A sala está cheia.'); break;
+      case 'banned': this.cb.onKicked?.('Você foi expulso desta sala e não pode voltar.'); break;
+      case 'vote': {
+        const isNew = !this.vote || this.vote.target !== m.target;
+        this.vote = { ...m, endsAt: performance.now() + m.rem };
+        if (isNew) {
+          SFX.playChat();
+          if (m.target === this.me.id) this.hud.toast(`${m.sn} abriu uma votação para te expulsar`);
+        }
+        this.cb.onVote?.(this.vote);
+        break;
+      }
+      case 'voteEnd':
+        this.vote = null;
+        this.hud.vote(null);
+        this.hud.feedInfo(m.ok ? `Votação aprovada: ${m.tn} foi expulso` : `Votação para expulsar ${m.tn} não passou`);
+        this.cb.onVote?.(null);
+        break;
       default:
     }
   }
@@ -876,6 +928,7 @@ export class GameClient {
       }
     }
     this.hud.updateScoreboard(this.scoreboardData());
+    this.cb.onRoster?.();
   }
 
   scoreboardData() {
@@ -1392,6 +1445,14 @@ export class GameClient {
       this.hud.flash(Math.min(1, k * 1.6));
     } else this.hud.flash(0);
     this.hud.drawRadar(this.radarData(now));
+    if (this.vote) {
+      const v = this.vote;
+      this.hud.vote({
+        tn: v.tn, sn: v.sn, yes: v.yes.length, no: v.no.length, need: v.need, total: v.total,
+        rem: Math.max(0, (v.endsAt - now) / 1000), mine: v.yes.includes(this.me.id) ? 'sim' : v.no.includes(this.me.id) ? 'não' : null,
+        target: v.target === this.me.id,
+      });
+    }
   }
 
   hintText() {

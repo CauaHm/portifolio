@@ -42,6 +42,8 @@ export class Server {
     this.rosterDirty = true;
     this.stateDirty = true;
     this.usedNames = new Set();
+    this.banned = new Set(); // nomes expulsos (minúsculos)
+    this.vote = null;
     // offline: a partida começa quando o jogador escolhe o time
     this.autoStart = !!this.settings.offline;
     if (!this.autoStart) this.enterWarmup();
@@ -65,6 +67,8 @@ export class Server {
     this.players.delete(id);
     this.usedNames.delete(p.name);
     this.out.broadcast({ t: 'left', i: id, n: p.name });
+    if (this.vote && (this.vote.target === id || this.vote.starter === id)) this.endVote(false, 'saiu');
+    else if (this.vote) this.checkVote();
     this.balanceBots();
     this.rosterDirty = true;
   }
@@ -87,15 +91,33 @@ export class Server {
       case 'defuseCancel': p.defuseStart = 0; return;
       case 'defuse': return this.onDefuse(p);
       case 'chat': return this.onChat(p, m);
+      case 'voteStart': return this.onVoteStart(p, m.target);
+      case 'voteCast': return this.onVoteCast(p, !!m.yes);
       case 'ping': this.out.send(id, { t: 'pong', c: m.c }); p.ping = Math.round(m.pi || 0); return;
       case 'cmd': if (id === 'host') this.onCommand(m); return;
       default:
     }
   }
 
+  humanCount() {
+    let n = 0;
+    for (const p of this.players.values()) if (!p.bot) n++;
+    return n;
+  }
+
+  reject(id, t) {
+    this.out.send(id, { t });
+    const why = t === 'full' ? 'A sala está cheia.' : 'Você foi expulso desta sala e não pode voltar.';
+    setTimeout(() => this.out.kick?.(id, why), 1500);
+  }
+
   onJoin(id, m) {
     if (this.players.has(id)) return;
     let name = String(m.name || 'Jogador').replace(/[<>]/g, '').trim().slice(0, 16) || 'Jogador';
+    if (id !== 'host') {
+      if (this.banned.has(name.toLowerCase())) return this.reject(id, 'banned');
+      if (this.humanCount() >= this.settings.maxPlayers) return this.reject(id, 'full');
+    }
     let base = name, n = 2;
     while (this.usedNames.has(name)) name = base.slice(0, 13) + ' ' + n++;
     this.usedNames.add(name);
@@ -656,10 +678,79 @@ export class Server {
       this.enterWarmup();
     } else if (m.c === 'kick') {
       const p = this.players.get(m.i);
-      if (p && !p.bot && p.id !== 'host') {
-        this.out.send(p.id, { t: 'kicked' });
-        this.out.kick?.(p.id);
-      }
+      if (p && !p.bot && p.id !== 'host') this.kickPlayer(p, 'pelo host');
+    }
+  }
+
+  // ---------------- expulsar / votação ----------------
+  kickPlayer(p, why) {
+    this.banned.add(p.name.toLowerCase());
+    this.out.broadcast({ t: 'msg', text: `${p.name} foi expulso ${why}.`, dur: 3 });
+    this.out.send(p.id, { t: 'kicked', why });
+    setTimeout(() => this.out.kick?.(p.id, `Você foi expulso ${why}.`), 1500);
+    this.leave(p.id);
+  }
+
+  voters() {
+    // humanos que podem votar (todos menos o alvo)
+    return [...this.players.values()].filter((q) => !q.bot && q.id !== this.vote?.target);
+  }
+
+  onVoteStart(p, targetId) {
+    if (p.bot) return;
+    const t = this.players.get(targetId);
+    const fail = (r) => this.out.send(p.id, { t: 'buyfail', r });
+    if (this.vote) return fail('Já tem uma votação em andamento.');
+    if (!t || t.bot || t === p) return fail('Jogador inválido.');
+    if (t.id === 'host') return fail('O host não pode ser expulso por votação.');
+    if (p.lastVoteAt && this.now - p.lastVoteAt < 60000) return fail('Espere um pouco para abrir outra votação.');
+    p.lastVoteAt = this.now;
+    this.vote = { target: t.id, tn: t.name, starter: p.id, sn: p.name, yes: new Set([p.id]), no: new Set(), endsAt: this.now + 30000 };
+    this.broadcastVote();
+    this.checkVote();
+  }
+
+  onVoteCast(p, yes) {
+    const v = this.vote;
+    if (!v || p.bot || p.id === v.target) return;
+    v.yes.delete(p.id); v.no.delete(p.id);
+    (yes ? v.yes : v.no).add(p.id);
+    this.broadcastVote();
+    this.checkVote();
+  }
+
+  voteNeed() {
+    return Math.floor(this.voters().length / 2) + 1;
+  }
+
+  broadcastVote() {
+    const v = this.vote;
+    if (!v) return;
+    const ids = new Set(this.voters().map((q) => q.id));
+    const yes = [...v.yes].filter((i) => ids.has(i));
+    const no = [...v.no].filter((i) => ids.has(i));
+    this.out.broadcast({ t: 'vote', target: v.target, tn: v.tn, sn: v.sn, yes, no, need: this.voteNeed(), total: ids.size, rem: Math.max(0, v.endsAt - this.now) });
+  }
+
+  checkVote() {
+    const v = this.vote;
+    if (!v) return;
+    const ids = new Set(this.voters().map((q) => q.id));
+    const yes = [...v.yes].filter((i) => ids.has(i)).length;
+    const no = [...v.no].filter((i) => ids.has(i)).length;
+    const need = this.voteNeed();
+    if (yes >= need) this.endVote(true);
+    else if (no > ids.size - need) this.endVote(false);
+  }
+
+  endVote(ok, why) {
+    const v = this.vote;
+    if (!v) return;
+    this.vote = null;
+    this.out.broadcast({ t: 'voteEnd', ok: ok ? 1 : 0, tn: v.tn, why: why || '' });
+    if (ok) {
+      const t = this.players.get(v.target);
+      if (t) this.kickPlayer(t, 'por votação');
     }
   }
 
@@ -1006,6 +1097,7 @@ export class Server {
     }
 
     this.tickPhase();
+    if (this.vote && this.now >= this.vote.endsAt) this.endVote(false, 'tempo');
 
     // renascimentos
     for (const p of this.players.values()) {
@@ -1260,6 +1352,7 @@ export function normalizeSettings(s) {
     roundsToWin: [3, 5, 8, 13].includes(Number(s.roundsToWin)) ? Number(s.roundsToWin) : 8,
     killLimit: Math.max(5, Math.min(200, Number(s.killLimit) || (mode === 'ffa' ? 25 : 50))),
     timeLimit: Math.max(2, Math.min(30, Number(s.timeLimit) || 10)),
+    maxPlayers: Math.max(2, Math.min(16, Number(s.maxPlayers) || 10)),
     offline: !!s.offline,
   };
 }

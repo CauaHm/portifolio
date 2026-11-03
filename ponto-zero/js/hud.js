@@ -227,6 +227,19 @@ export class Hud {
     this.el.chatLog.classList.remove('open');
   }
 
+  vote(v) {
+    const el = this.el.votePanel || (this.el.votePanel = document.getElementById('votePanel'));
+    if (!v) { el.style.display = 'none'; this.lastFrame.vote = ''; return; }
+    const key = JSON.stringify([v.tn, v.yes, v.no, v.need, Math.ceil(v.rem), v.mine, v.target]);
+    if (key === this.lastFrame.vote) return;
+    this.lastFrame.vote = key;
+    el.style.display = '';
+    el.innerHTML = `<b>Votação: expulsar ${esc(v.tn)}?</b><small>aberta por ${esc(v.sn)} · ${Math.ceil(v.rem)} s</small>
+      <div class="vbar"><span class="vy" style="width:${(v.yes / Math.max(1, v.total)) * 100}%"></span><span class="vn" style="width:${(v.no / Math.max(1, v.total)) * 100}%"></span></div>
+      <small>Sim ${v.yes} · Não ${v.no} · precisa de ${v.need}</small>
+      ${v.target ? '<small>Você é o alvo da votação.</small>' : v.mine ? `<small>Você votou: ${v.mine}</small>` : '<small><kbd>J</kbd> Sim · <kbd>K</kbd> Não</small>'}`;
+  }
+
   spectating(name, color, canCycle) {
     const key = `${name}|${canCycle}`;
     if (this.lastFrame.spec === key) return;

@@ -18,7 +18,7 @@ const store = {
   },
 };
 
-const DEFAULT_OPTS = { sens: 1, fov: 74, volume: 0.7, crossColor: '#4dff7a', crossSize: 8, crossDot: false, invert: false };
+const DEFAULT_OPTS = { sens: 1, fov: 74, volume: 0.7, crossColor: '#4dff7a', crossSize: 8, crossDot: false, invert: false, fullscreen: true };
 let opts = { ...DEFAULT_OPTS, ...store.get('pz-opts', {}) };
 
 let session = null; // {kind:'offline'|'host'|'client', server, client, net, code}
@@ -64,8 +64,23 @@ function initMenu() {
   $('btnErrorBack').onclick = () => { show('menu'); };
   renderModeCards($('modeCards'), () => roomSettings.mode, (m) => { roomSettings = withMode(roomSettings, m); renderCreate(); });
   bindSettingsForm('create', () => roomSettings, (s) => { roomSettings = s; renderCreate(); });
-  if (sala) $('codeInput').focus();
+  // convite: link com ?sala=CODIGO abre direto a tela de entrar, só pedindo o nome
+  $('inviteName').value = $('nameInput').value;
+  const goInvite = () => {
+    const n = $('inviteName').value.trim();
+    if (!n) { $('inviteName').focus(); return; }
+    $('nameInput').value = n;
+    joinRoom();
+  };
+  $('btnInviteJoin').onclick = goInvite;
+  $('inviteName').addEventListener('keydown', (e) => { if (e.key === 'Enter') goInvite(); });
+  $('btnInviteMenu').onclick = () => { history.replaceState(null, '', location.pathname); show('menu'); };
   initOnline();
+}
+
+function inviteCode() {
+  const sala = new URLSearchParams(location.search).get('sala');
+  return sala ? sala.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) : '';
 }
 
 async function initOnline() {
@@ -94,7 +109,7 @@ function startLobby() {
     $('roomList').innerHTML = rooms.map((r) => `
       <button class="roomItem" data-code="${esc(r.code)}">
         <b>${esc(r.host || 'Sala')}</b><span class="rc">${esc(r.code)}</span>
-        <small>${esc(MODES[r.mode]?.name || '')} · ${r.players || 1} jogador${(r.players || 1) > 1 ? 'es' : ''}${r.bots ? ` + ${r.bots} bots` : ''} · ${r.phase === 'warmup' ? 'aquecimento' : 'em jogo'}</small>
+        <small>${esc(MODES[r.mode]?.name || '')} · ${r.players || 1}${r.max ? '/' + r.max : ''} jogador${(r.players || 1) > 1 ? 'es' : ''}${r.bots ? ` + ${r.bots} bots` : ''} · ${r.max && r.players >= r.max ? 'cheia' : r.phase === 'warmup' ? 'aquecimento' : 'em jogo'}</small>
       </button>`).join('');
     $('roomList').querySelectorAll('.roomItem').forEach((b) => {
       b.onclick = () => { $('codeInput').value = b.dataset.code; joinRoom(); };
@@ -135,15 +150,19 @@ function renderModeCards(el, get, set) {
 // formulário de configurações (reutilizado no menu de pausa do host)
 function bindSettingsForm(prefix, get, set) {
   const bots = $(prefix + 'Bots'), diff = $(prefix + 'Diff'), rounds = $(prefix + 'Rounds'), limit = $(prefix + 'Limit');
+  const max = $(prefix + 'Max');
   diff.innerHTML = Object.entries(DIFFICULTY).map(([k, d]) => `<option value="${k}">${d.name}</option>`).join('');
+  max.innerHTML = [2, 4, 6, 8, 10, 12, 16].map((v) => `<option value="${v}">${v} jogadores</option>`).join('');
   const update = () => {
     const s = { ...get() };
     s.botFill = Number(bots.value);
     s.botDiff = diff.value;
     s.roundsToWin = Number(rounds.value);
     s.killLimit = Number(limit.value);
+    s.maxPlayers = Number(max.value);
     set(normalizeSettings(s));
   };
+  max.onchange = update;
   bots.oninput = update;
   diff.onchange = update;
   rounds.onchange = update;
@@ -165,11 +184,13 @@ function fillSettingsForm(prefix, s) {
   lim.innerHTML = opts.map((v) => `<option value="${v}">${v} abates</option>`).join('');
   if (!opts.includes(s.killLimit)) s.killLimit = ffa ? 25 : 50;
   lim.value = String(s.killLimit);
+  $(prefix + 'Max').value = String(s.maxPlayers);
 }
 
 function openCreate(kind) {
   createKind = kind;
   $('createTitle').textContent = kind === 'host' ? 'Criar sala online' : 'Treino offline com bots';
+  $('createMaxRow').style.display = kind === 'host' ? '' : 'none';
   $('btnCreateGo').textContent = kind === 'host' ? 'Criar sala' : 'Jogar';
   renderCreate();
   show('create');
@@ -206,9 +227,11 @@ function makeClient(send, isHost) {
       onWelcome: (m) => onWelcome(m),
       onPause: () => openPause(),
       onTeam: () => refreshPause(),
+      onRoster: () => refreshPlayers(),
       onSettings: () => refreshPause(),
       onPhase: () => refreshPause(),
-      onKicked: () => errorScreen('Você foi removido da sala pelo host.'),
+      onKicked: (text) => errorScreen(text || 'Você foi removido da sala.'),
+      onVote: () => refreshPlayers(),
       code: () => session?.code || '',
     },
   });
@@ -232,6 +255,7 @@ async function startCreate() {
   else {
     show('connecting');
     $('connectingText').textContent = 'Criando sala…';
+    stopLobby();
     createHost(name, useSupa ? SupaHostNet : HostNet);
   }
 }
@@ -274,7 +298,7 @@ function startLocal(name, net, code) {
       if (net) net.broadcast(msg, str, except);
       if (except !== 'host') client.receive(JSON.parse(str));
     },
-    kick: (id) => net?.kick(id),
+    kick: (id, why) => net?.kick(id, why),
   };
   client = makeClient((msg) => server.receive('host', clone(msg)), true);
   const server = new Server(s, out);
@@ -288,7 +312,7 @@ function startLocal(name, net, code) {
       if (!session || session.net !== net) return;
       let players = 0, bots = 0;
       for (const p of server.players.values()) { if (p.bot) bots++; else players++; }
-      net.announce?.({ host: name, mode: server.settings.mode, players, bots, phase: server.phase === 'warmup' ? 'warmup' : 'live' });
+      net.announce?.({ host: name, mode: server.settings.mode, players, max: server.settings.maxPlayers, bots, phase: server.phase === 'warmup' ? 'warmup' : 'live' });
     };
     announce();
     session.announceTimer = setInterval(announce, 4000);
@@ -312,6 +336,7 @@ async function joinRoom() {
   const name = playerName();
   show('connecting');
   $('connectingText').textContent = `Conectando à sala ${code}…`;
+  stopLobby();
   connectClient(code, name, useSupa ? SupaClientNet : ClientNet);
 }
 
@@ -332,11 +357,15 @@ function connectClient(code, name, Net) {
       // vigia de conexão
       session.lastMsg = performance.now();
       session.watch = setInterval(() => {
-        if (performance.now() - session.lastMsg > 8000) errorScreen('Sem resposta do host. A conexão caiu.');
+        if (performance.now() - session.lastMsg > 12000) errorScreen('Sem resposta do host. A conexão caiu.');
       }, 2000);
     },
     onMessage: (msg) => {
       if (session) session.lastMsg = performance.now();
+      // recusas e expulsões são tratadas na hora (antes de a conexão cair)
+      if (msg.t === 'full') return errorScreen('A sala está cheia.');
+      if (msg.t === 'banned') return errorScreen('Você foi expulso desta sala e não pode voltar.');
+      if (msg.t === 'kicked') return errorScreen(msg.why ? `Você foi expulso ${msg.why}.` : 'Você foi removido da sala.');
       client?.receive(msg);
     },
     onClose: (reason) => { if (session && session.client) errorScreen(reason); },
@@ -355,16 +384,26 @@ function connectClient(code, name, Net) {
   try { net.connect(code); } catch (e) { net.h.onError?.(e); }
 }
 
+// pergunta antes de fechar a aba no meio da partida (Ctrl+W sem tela cheia, Ctrl+R, fechar janela)
+function guardUnload(e) {
+  e.preventDefault();
+  e.returnValue = '';
+  return '';
+}
+
 function enterGame() {
   stopLobby();
   show('gameScreen');
   session.client.start();
-  history.replaceState(null, '', session.code ? `?sala=${session.code}` : location.pathname);
+  // quem entrou por código fica com o link da sala (recarregar volta para ela); o host não
+  history.replaceState(null, '', session.kind === 'client' && session.code ? `?sala=${session.code}` : location.pathname);
   if (session.code) $('pauseCode').textContent = session.code;
+  window.addEventListener('beforeunload', guardUnload);
 }
 
 function startServerLoop() {
   let last = performance.now();
+  let lastRaf = performance.now();
   const tick = () => {
     if (!session || !session.server) return;
     const now = performance.now();
@@ -374,16 +413,19 @@ function startServerLoop() {
   const loop = () => {
     if (!session || !session.server) return;
     session.raf = requestAnimationFrame(loop);
+    lastRaf = performance.now();
     if (!document.hidden) tick();
   };
   session.raf = requestAnimationFrame(loop);
-  // aba em segundo plano: um worker mantém o servidor rodando para os outros jogadores
+  // aba em segundo plano, minimizada ou com a animação travada: um worker mantém o servidor
+  // rodando para os outros jogadores
   try {
     const blob = new Blob(['setInterval(() => postMessage(0), 33);'], { type: 'text/javascript' });
     const url = URL.createObjectURL(blob);
     const w = new Worker(url);
     w.onmessage = () => {
-      if (document.hidden && session?.server) {
+      if (!session?.server) return;
+      if (document.hidden || performance.now() - lastRaf > 150) {
         tick();
         session.client.pumpHidden?.();
       }
@@ -401,6 +443,7 @@ function endSession() {
   if (session.watch) clearInterval(session.watch);
   if (session.announceTimer) clearInterval(session.announceTimer);
   session = null;
+  window.removeEventListener('beforeunload', guardUnload);
   setTimeout(startLobby, 300);
   for (const id of ['pause', 'teamSelect']) $(id).classList.remove('show');
   history.replaceState(null, '', location.pathname);
@@ -438,8 +481,10 @@ function openPause() {
   if (!session?.client) return;
   const c = session.client;
   c.ui.pause = true;
-  refreshPause();
   $('pause').classList.add('show');
+  refreshPause();
+  refreshPlayers.last = null;
+  refreshPlayers();
 }
 
 function closePause() {
@@ -475,6 +520,45 @@ function refreshPause() {
 
 let pendingSettings = null;
 
+// lista de jogadores (humanos) com expulsar (host) ou votar para expulsar (outros)
+function refreshPlayers() {
+  if (!session?.client || !$('pause').classList.contains('show')) return;
+  const c = session.client;
+  const online = session.kind !== 'offline';
+  $('playersBox').style.display = online ? '' : 'none';
+  if (!online) return;
+  const amHost = session.kind === 'host';
+  const humans = [...c.roster.values()].filter((p) => !p.b);
+  const max = (amHost ? session.server.settings : c.state.settings)?.maxPlayers;
+  const key = JSON.stringify([humans.map((p) => p.i + p.n), max, c.vote && [c.vote.tn, c.vote.yes, c.vote.no]]);
+  if (key === refreshPlayers.last) return;
+  refreshPlayers.last = key;
+  $('playersCount').textContent = `${humans.length}${max ? '/' + max : ''}`;
+  $('playersList').innerHTML = humans.map((p) => {
+    let btn = '';
+    if (p.i !== c.me.id && p.i !== 'host') {
+      btn = amHost ? `<button class="btn small" data-kick="${esc(p.i)}">Expulsar</button>`
+        : `<button class="btn small" data-vote="${esc(p.i)}" ${c.vote ? 'disabled' : ''}>Votar p/ expulsar</button>`;
+    }
+    return `<div class="plRow"><span class="pn">${esc(p.n)}${p.i === 'host' ? '<span class="tag">host</span>' : ''}${p.i === c.me.id ? '<span class="tag">você</span>' : ''}</span>${btn}</div>`;
+  }).join('');
+  $('playersList').querySelectorAll('[data-kick]').forEach((b) => {
+    b.onclick = () => { c.send({ t: 'cmd', c: 'kick', i: b.dataset.kick }); setTimeout(refreshPlayers, 300); };
+  });
+  $('playersList').querySelectorAll('[data-vote]').forEach((b) => {
+    b.onclick = () => { c.startVote(b.dataset.vote); };
+  });
+  const v = c.vote;
+  const pv = $('pauseVote');
+  if (v) {
+    pv.style.display = '';
+    const mine = v.yes.includes(c.me.id) ? 'sim' : v.no.includes(c.me.id) ? 'não' : null;
+    pv.innerHTML = `<span>Votação: expulsar <b>${esc(v.tn)}</b>? (Sim ${v.yes.length} · Não ${v.no.length} · precisa de ${v.need})</span>` +
+      (v.target === c.me.id ? '<small>Você é o alvo.</small>' : `<button class="btn small" id="pvYes">Sim</button><button class="btn small ghost" id="pvNo">Não</button>${mine ? `<small>Você votou: ${mine}</small>` : ''}`);
+    if ($('pvYes')) { $('pvYes').onclick = () => c.castVote(true); $('pvNo').onclick = () => c.castVote(false); }
+  } else pv.style.display = 'none';
+}
+
 function initPause() {
   $('btnResume').onclick = () => closePause();
   $('btnLeave').onclick = () => { endSession(); show('menu'); };
@@ -505,21 +589,26 @@ function initPause() {
     setTimeout(refreshPause, 100);
   };
   // opções
-  const sens = $('optSens'), fov = $('optFov'), vol = $('optVol'), cc = $('optCross'), cs = $('optCrossSize'), cd = $('optDot');
+  const sens = $('optSens'), fov = $('optFov'), vol = $('optVol'), cc = $('optCross'), cs = $('optCrossSize'), cd = $('optDot'), fs = $('optFull');
   sens.value = opts.sens; fov.value = opts.fov; vol.value = opts.volume; cc.value = opts.crossColor; cs.value = opts.crossSize; cd.checked = opts.crossDot;
+  fs.checked = opts.fullscreen !== false;
   const label = () => {
     $('optSensVal').textContent = Number(opts.sens).toFixed(2);
     $('optFovVal').textContent = opts.fov + '°';
     $('optVolVal').textContent = Math.round(opts.volume * 100) + '%';
   };
   const apply = () => {
-    opts = { ...opts, sens: Number(sens.value), fov: Number(fov.value), volume: Number(vol.value), crossColor: cc.value, crossSize: Number(cs.value), crossDot: cd.checked };
+    opts = { ...opts, sens: Number(sens.value), fov: Number(fov.value), volume: Number(vol.value), crossColor: cc.value, crossSize: Number(cs.value), crossDot: cd.checked, fullscreen: fs.checked };
     store.set('pz-opts', opts);
     label();
     if (session?.client) session.client.applyOptions(opts);
   };
   for (const el of [sens, fov, vol, cc, cs]) el.oninput = apply;
   cd.onchange = apply;
+  fs.onchange = () => {
+    apply();
+    if (!fs.checked && document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  };
   label();
   // seleção de time
   for (const [id, team] of [['teamAtk', 'atk'], ['teamDef', 'def'], ['teamAuto', 'auto'], ['teamSpec', 'spec']]) {
@@ -539,4 +628,9 @@ initMenu();
 initPause();
 if (new URLSearchParams(location.search).has('debug')) window.__pz = () => session;
 window.__pzReady = true;
-show('menu');
+if (inviteCode()) {
+  $('codeInput').value = inviteCode();
+  $('inviteCode').textContent = inviteCode();
+  show('invite');
+  setTimeout(() => { $('inviteName').focus(); $('inviteName').select(); }, 50);
+} else show('menu');
