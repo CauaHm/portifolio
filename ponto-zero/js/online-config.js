@@ -16,7 +16,7 @@
 // Se nada estiver configurado, o jogo cai para o PeerJS (servidor público de sinalização).
 
 export const ONLINE = {
-  supabaseUrl: '',
+  supabaseUrl: 'https://hfjntyxrilijpoaljsty.supabase.co',
   supabaseAnonKey: 'sb_publishable_ezENL9LugGzfpky76sRXMA__imRUzmh',
   // Servidores STUN para o WebRTC. Dá para acrescentar um TURN próprio aqui:
   // { urls: 'turn:meu.turn:3478', username: 'x', credential: 'y' }
