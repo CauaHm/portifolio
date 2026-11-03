@@ -25,6 +25,14 @@ let session = null; // {kind:'offline'|'host'|'client', server, client, net, cod
 let onlineCfg = null;
 let useSupa = false;
 let lobby = null;
+let supaError = null; // motivo da última falha do Supabase (mostrado na tela)
+
+function setNetInfo() {
+  if (!onlineCfg) return;
+  if (!useSupa) $('netInfo').innerHTML = 'Online via PeerJS';
+  else if (supaError) $('netInfo').innerHTML = `<span class="warnTxt">Supabase falhou: ${esc(supaError)}</span><br>Usando PeerJS como reserva (a sala não aparece na lista).`;
+  else $('netInfo').innerHTML = 'Online via <b>Supabase</b> + WebRTC';
+}
 let createKind = 'offline';
 let roomSettings = normalizeSettings(store.get('pz-room', { mode: 'elim', botFill: 4, botDiff: 'normal', roundsToWin: 8 }));
 
@@ -63,9 +71,7 @@ function initMenu() {
 async function initOnline() {
   onlineCfg = await loadOnlineConfig();
   useSupa = supabaseReady(onlineCfg);
-  $('netInfo').innerHTML = useSupa
-    ? 'Online via <b>Supabase</b> + WebRTC'
-    : 'Online via PeerJS (configure o Supabase para a lista de salas)';
+  setNetInfo();
   if (useSupa) startLobby();
 }
 
@@ -75,7 +81,9 @@ function startLobby() {
   $('roomList').innerHTML = '<div class="roomEmpty">Procurando salas…</div>';
   lobby = new LobbyWatcher(onlineCfg, (rooms, err) => {
     if (err || !rooms) {
-      $('roomList').innerHTML = '<div class="roomEmpty">Não foi possível listar as salas.</div>';
+      supaError = (err && err.message) || 'erro desconhecido';
+      setNetInfo();
+      $('roomList').innerHTML = `<div class="roomEmpty">Não foi possível listar as salas.<br><small>${esc(supaError)}</small></div>`;
       return;
     }
     $('roomCount').textContent = rooms.length ? `${rooms.length} aberta${rooms.length > 1 ? 's' : ''}` : '';
@@ -239,6 +247,7 @@ function createHost(name, Net) {
       if (session && session.client) { console.warn('rede', err); return; }
       if (Net === SupaHostNet) {
         console.warn('Supabase indisponível, usando PeerJS:', err);
+        supaError = err.message || String(err);
         $('connectingText').textContent = 'Supabase indisponível, tentando outra conexão…';
         try { net.close(); } catch (e) { /* ignora */ }
         createHost(name, HostNet);
@@ -283,6 +292,10 @@ function startLocal(name, net, code) {
     };
     announce();
     session.announceTimer = setInterval(announce, 4000);
+    const why = !(net instanceof SupaHostNet) && supaError ? supaError : net.lobbyError ? net.lobbyError.message : null;
+    if (why) {
+      setTimeout(() => client.hud.centerMsg('Sala criada sem a lista de salas', 6, 'warn', `Use o código ${code}. Motivo: ${why}`), 1800);
+    }
   }
 }
 
@@ -330,6 +343,7 @@ function connectClient(code, name, Net) {
     onError: (err) => {
       if (Net === SupaClientNet && !(session && session.client)) {
         console.warn('Supabase: ' + (err.message || err) + ' — tentando PeerJS');
+        if (!/não encontrada/i.test(err.message || '')) supaError = err.message || String(err);
         try { net.close(); } catch (e) { /* ignora */ }
         connectClient(code, name, ClientNet);
         return;
@@ -442,6 +456,9 @@ function refreshPause() {
   $('hostPanel').style.display = host ? '' : 'none';
   $('pauseRoom').style.display = session.code ? '' : 'none';
   $('pauseCode').textContent = session.code || '';
+  $('pauseNet').textContent = session.net instanceof SupaHostNet || session.net instanceof SupaClientNet
+    ? `Supabase${session.mode === 'relay' ? ' (relé)' : ''}${session.net?.lobbyError ? ' · sem lista de salas' : ''}`
+    : session.net ? 'PeerJS' : '';
   const st = c.state;
   const s = host ? session.server.settings : st.settings;
   $('pauseMode').textContent = MODES[s?.mode || st.mode]?.name || '';

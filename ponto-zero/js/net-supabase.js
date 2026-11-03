@@ -72,7 +72,7 @@ function subscribe(ch) {
       if (status === 'SUBSCRIBED') { done = true; clearTimeout(t); resolve(); }
       else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
         done = true; clearTimeout(t);
-        reject(new Error('Falha no Supabase Realtime (' + status + (err ? ': ' + (err.message || err) : '') + ').'));
+        reject(new Error('Supabase Realtime recusou a conexão (' + status + (err ? ': ' + (err.message || err) : '') + ')'));
       }
     });
   });
@@ -100,7 +100,7 @@ export class SupaHostNet {
     try {
       const sb = client(this.cfg);
       this.code = code;
-      const ch = sb.channel(CH_PREFIX + code, { config: { broadcast: { self: false, ack: false }, presence: { key: 'host' } } });
+      const ch = sb.channel(CH_PREFIX + code, { config: { broadcast: { self: false, ack: false }, presence: { key: 'host', enabled: true } } });
       this.ch = ch;
       ch.on('broadcast', { event: 'sig' }, ({ payload }) => this._sig(payload));
       ch.on('broadcast', { event: 'c2h' }, ({ payload }) => this._relayIn(payload));
@@ -118,8 +118,8 @@ export class SupaHostNet {
       }
       await ch.track({ role: 'host', at: Date.now() });
       // lista pública de salas
-      this.lobby = sb.channel(LOBBY, { config: { presence: { key: code } } });
-      await subscribe(this.lobby).catch(() => { this.lobby = null; });
+      this.lobby = sb.channel(LOBBY, { config: { presence: { key: code, enabled: true } } });
+      await subscribe(this.lobby).catch((e) => { this.lobbyError = e; this.lobby = null; console.warn('lista de salas:', e); });
       if (this.lobbyInfo) this.announce(this.lobbyInfo);
       this.h.onOpen?.(code);
     } catch (e) {
@@ -304,7 +304,7 @@ export class SupaClientNet {
     code = code.toUpperCase();
     try {
       const sb = client(this.cfg);
-      const ch = sb.channel(CH_PREFIX + code, { config: { broadcast: { self: false, ack: false }, presence: { key: this.cid } } });
+      const ch = sb.channel(CH_PREFIX + code, { config: { broadcast: { self: false, ack: false }, presence: { key: this.cid, enabled: true } } });
       this.ch = ch;
       ch.on('broadcast', { event: 'sig' }, ({ payload }) => this._sig(payload));
       ch.on('broadcast', { event: 'h2c' }, ({ payload: p }) => {
@@ -446,7 +446,7 @@ export class LobbyWatcher {
   async start() {
     try {
       const sb = client(this.cfg);
-      this.ch = sb.channel(LOBBY, { config: { presence: { key: 'viewer-' + uid() } } });
+      this.ch = sb.channel(LOBBY, { config: { presence: { key: 'viewer-' + uid(), enabled: true } } });
       this.ch.on('presence', { event: 'sync' }, () => this._emit());
       await subscribe(this.ch);
       this._emit();
