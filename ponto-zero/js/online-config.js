@@ -17,7 +17,7 @@
 
 export const ONLINE = {
   supabaseUrl: '',
-  supabaseAnonKey: '',
+  supabaseAnonKey: 'sb_publishable_ezENL9LugGzfpky76sRXMA__imRUzmh',
   // Servidores STUN para o WebRTC. Dá para acrescentar um TURN próprio aqui:
   // { urls: 'turn:meu.turn:3478', username: 'x', credential: 'y' }
   iceServers: [
