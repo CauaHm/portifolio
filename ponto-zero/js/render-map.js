@@ -157,7 +157,8 @@ function pushBox(arr, b, scale, faces = 'all', uvMode = 'world') {
   quads.push([[-1, 0, 0], [[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]], 'z']);
   quads.push([[0, 0, 1], [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], 'x']);
   quads.push([[0, 0, -1], [[x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0]], 'x']);
-  if (faces === 'all') quads.push([[0, 1, 0], [[x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0]], 'top']);
+  if (faces === 'all' || faces === 'bottom') quads.push([[0, 1, 0], [[x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0]], 'top']);
+  if (faces === 'bottom') quads.push([[0, -1, 0], [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], 'top']);
   for (const [n, c, ax] of quads) {
     const uv = c.map(([x, y, z]) => {
       if (uvMode === 'box') {
@@ -223,6 +224,36 @@ export function buildMapMeshes(map, scene) {
       pushBox(arr.trim, { minx: b.minx - 0.12, minz: b.minz - 0.12, maxx: b.maxx + 0.12, maxz: b.maxz + 0.12, miny: height - 0.25, maxy: height }, 1);
     }
   }
+  // ---- caixas e concreto ----
+  const crate = { pos: [], nor: [], uv: [] };
+  const conc = { pos: [], nor: [], uv: [] };
+  const roof = { pos: [], nor: [], uv: [] };
+  const lamps = [];
+  for (let r = 0; r < GH; r++) {
+    for (let c = 0; c < GW; c++) {
+      for (const b of map.boxes[r][c]) {
+        if (b.lintel) {
+          // batente com a cor da parede vizinha
+          const comp = map.neighborWallComp(c, r);
+          const height = map.compHeight[comp];
+          const ci = height >= 9 ? 0 : comp % WALL_COLORS.length;
+          if (!byColor.has(ci)) byColor.set(ci, { pos: [], nor: [], uv: [], trim: { pos: [], nor: [], uv: [] } });
+          const arr = byColor.get(ci);
+          pushBox(arr, b, 3, 'bottom');
+          pushBox(arr.trim, { ...b, maxy: b.miny + 0.18, minx: b.minx - 0.02, maxx: b.maxx + 0.02, minz: b.minz - 0.02, maxz: b.maxz + 0.02 }, 1, 'bottom');
+          continue;
+        }
+        if (b.roof) {
+          pushBox(roof, { ...b, minx: b.minx - 0.05, maxx: b.maxx + 0.05, minz: b.minz - 0.05, maxz: b.maxz + 0.05 }, 2, 'bottom');
+          if ((c + r) % 3 === 0) lamps.push([(b.minx + b.maxx) / 2, b.miny - 0.06, (b.minz + b.maxz) / 2]);
+          continue;
+        }
+        if (b.kind === 'wall') continue;
+        if (b.kind === 'crate') pushBox(crate, b, 1, 'all', 'box');
+        else pushBox(conc, b, 2);
+      }
+    }
+  }
   const trimMat = new THREE.MeshStandardMaterial({ map: T.trim, roughness: 0.95 });
   for (const [ci, arr] of byColor) {
     const mat = new THREE.MeshStandardMaterial({ map: T.plaster, color: WALL_COLORS[ci], roughness: 0.92 });
@@ -236,15 +267,15 @@ export function buildMapMeshes(map, scene) {
     group.add(tm);
   }
 
-  // ---- caixas e concreto ----
-  const crate = { pos: [], nor: [], uv: [] };
-  const conc = { pos: [], nor: [], uv: [] };
-  for (let r = 0; r < GH; r++) {
-    for (let c = 0; c < GW; c++) {
-      const b = map.boxes[r][c];
-      if (!b || b.kind === 'wall') continue;
-      if (b.kind === 'crate') pushBox(crate, b, 1, 'all', 'box');
-      else pushBox(conc, b, 2);
+  if (roof.pos.length) {
+    const rm = new THREE.Mesh(geoFrom(roof), new THREE.MeshStandardMaterial({ map: T.concrete, color: 0xc4beb2, emissive: 0x3b352d, roughness: 0.95 }));
+    rm.castShadow = rm.receiveShadow = true;
+    group.add(rm);
+    const lampMat2 = new THREE.MeshStandardMaterial({ color: 0xfff2c0, emissive: 0xffd27a, emissiveIntensity: 0.9 });
+    for (const [x, y, z] of lamps) {
+      const l = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.18), lampMat2);
+      l.position.set(x, y, z);
+      group.add(l);
     }
   }
   const crateMesh = new THREE.Mesh(geoFrom(crate), new THREE.MeshStandardMaterial({ map: T.crate, roughness: 0.85 }));

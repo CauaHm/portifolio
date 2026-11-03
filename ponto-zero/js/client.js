@@ -23,6 +23,7 @@ export class GameClient {
     this.cb = callbacks || {};
     this.opts = settings; // configurações locais (sensibilidade, fov, volume, mira)
     this.inbox = [];
+    this.interpDelay = INTERP_DELAY;
     this.map = new GameMap();
     this.running = false;
 
@@ -1184,7 +1185,7 @@ export class GameClient {
   }
 
   updateEnts(dt, now) {
-    const rt = now - INTERP_DELAY;
+    const rt = now - this.interpDelay;
     const teamMode = MODES[this.state.mode]?.teams;
     for (const ent of this.ents.values()) {
       const s = this.sampleEnt(ent, rt);

@@ -94,6 +94,12 @@ export class HostNet {
     }
   }
 
+  broadcast(msg, str, exceptId) {
+    this.broadcastRaw(str, exceptId);
+  }
+
+  announce() { /* PeerJS não tem lista de salas */ }
+
   broadcastRaw(str, exceptId) {
     for (const [id, c] of this.conns) {
       if (id === exceptId || !c.open) continue;
@@ -136,7 +142,7 @@ export class ClientNet {
       this.conn.on('open', () => {
         this.opened = true;
         clearTimeout(timeout);
-        this.h.onOpen?.();
+        this.h.onOpen?.('rtc');
       });
       this.conn.on('data', (data) => {
         let msg = data;

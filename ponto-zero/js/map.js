@@ -1,5 +1,6 @@
 // Mapa "Vila Seca": grade de células de 2 m. Lógica de colisão, raycast e navegação dos bots.
-// Legenda: # parede | . chão | c caixa baixa | C caixa alta | s degrau | p plataforma
+// Legenda: # parede | . chão | c caixa baixa | C caixa alta | s degrau | p plataforma | q plataforma alta
+//          d porta (chão com batente em cima) | t galeria coberta (chão com teto)
 // Zonas (separadas da grade): A/B pontos de bomba, T base dos atacantes, D base dos defensores.
 
 export const CELL = 2;
@@ -8,10 +9,12 @@ export const GH = 30;
 export const OX = -(GW * CELL) / 2; // x mínimo do mapa
 export const OZ = -(GH * CELL) / 2; // z mínimo do mapa
 
-const SOLID = { '#': true, c: true, C: true, s: true, p: true };
-const WALKABLE_NAV = { '.': true };
+const SOLID = { '#': true, c: true, C: true, s: true, p: true, q: true };
+const WALKABLE_NAV = { '.': true, d: true, t: true };
 const INSET = { c: 0.12, C: 0.12 };
-const FIXED_H = { c: 1.1, C: 2.2, s: 0.55, p: 1.1 };
+const FIXED_H = { c: 1.1, C: 2.2, s: 0.55, p: 1.1, q: 1.65 };
+export const LINTEL_Y = 2.75; // altura do batente das portas
+export const ROOF_Y = 3.1; // altura do teto da galeria
 
 function buildLayout() {
   const g = [];
@@ -51,6 +54,15 @@ function buildLayout() {
   zone(23, 1, 32, 9, 'A');
   zone(23, 20, 32, 28, 'B');
 
+  // ---- portas com batente e galerias cobertas ----
+  fill(22, 2, 22, 3, 'd'); // portão rua norte -> A
+  fill(22, 26, 22, 27, 'd'); // portão rua sul -> B
+  fill(33, 6, 33, 8, 'd'); // passagem A <-> leste
+  fill(33, 21, 33, 23, 'd'); // passagem B <-> leste
+  fill(28, 10, 29, 10, 'd'); // atalho meio -> A
+  fill(14, 5, 15, 12, 't'); // galeria do beco
+  fill(24, 17, 25, 19, 't'); // galeria da janela do B
+
   // ---- detalhes e coberturas ----
   // rua norte
   fill(9, 1, 10, 2, '#'); // casinha
@@ -74,6 +86,7 @@ function buildLayout() {
   put(30, 6, 'C');
   put(31, 6, 'c');
   put(30, 7, 'c');
+  put(24, 1, 'q'); // mirante do A
   put(25, 1, 'p');
   put(26, 1, 's');
   // meio
@@ -118,10 +131,10 @@ export class GameMap {
     this.wallComp = [];
     this.compHeight = [];
     this._components();
-    this.boxes = []; // por célula
+    this.boxes = []; // por célula: lista de caixas
     for (let r = 0; r < GH; r++) {
       const row = [];
-      for (let c = 0; c < GW; c++) row.push(this._cellBox(c, r));
+      for (let c = 0; c < GW; c++) row.push(this._cellBoxes(c, r));
       this.boxes.push(row);
     }
     this.nav = [];
@@ -179,17 +192,49 @@ export class GameMap {
     this.wallComp = comp;
   }
 
-  _cellBox(c, r) {
+  _cellBoxes(c, r) {
     const ch = this.grid[r][c];
-    if (!SOLID[ch]) return null;
     const x0 = OX + c * CELL, z0 = OZ + r * CELL;
+    if (ch === 'd') {
+      // batente: da altura da porta até o topo da parede vizinha
+      const h = this.neighborWallHeight(c, r);
+      const b = box(x0, LINTEL_Y, z0, x0 + CELL, h, z0 + CELL, 'wall');
+      b.lintel = true;
+      return [b];
+    }
+    if (ch === 't') {
+      const b = box(x0, ROOF_Y, z0, x0 + CELL, ROOF_Y + 0.4, z0 + CELL, 'concrete');
+      b.roof = true;
+      return [b];
+    }
+    if (!SOLID[ch]) return [];
     if (ch === '#') {
       const h = this.compHeight[this.wallComp[r][c]];
-      return box(x0, 0, z0, x0 + CELL, h, z0 + CELL, 'wall');
+      return [box(x0, 0, z0, x0 + CELL, h, z0 + CELL, 'wall')];
     }
     const ins = INSET[ch] || 0;
     const kind = ch === 'c' || ch === 'C' ? 'crate' : 'concrete';
-    return box(x0 + ins, 0, z0 + ins, x0 + CELL - ins, FIXED_H[ch], z0 + CELL - ins, kind);
+    return [box(x0 + ins, 0, z0 + ins, x0 + CELL - ins, FIXED_H[ch], z0 + CELL - ins, kind)];
+  }
+
+  neighborWallHeight(c, r) {
+    let h = Infinity;
+    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nc = c + dc, nr = r + dr;
+      if (nc < 0 || nr < 0 || nc >= GW || nr >= GH) continue;
+      if (this.grid[nr][nc] === '#') h = Math.min(h, this.compHeight[this.wallComp[nr][nc]]);
+    }
+    return h === Infinity ? 5.5 : h;
+  }
+
+  // componente de parede vizinho (para a cor do batente)
+  neighborWallComp(c, r) {
+    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nc = c + dc, nr = r + dr;
+      if (nc < 0 || nr < 0 || nc >= GW || nr >= GH) continue;
+      if (this.grid[nr][nc] === '#') return this.wallComp[nr][nc];
+    }
+    return 0;
   }
 
   _spawnPoints(zoneCh) {
@@ -234,9 +279,9 @@ export class GameMap {
     for (let r = r0; r <= r1; r++) {
       for (let c = c0; c <= c1; c++) {
         if (c < 0 || r < 0 || c >= GW || r >= GH) return true;
-        const b = this.boxes[r][c];
-        if (!b) continue;
-        if (maxx > b.minx && minx < b.maxx && maxy > b.miny && miny < b.maxy && maxz > b.minz && minz < b.maxz) return true;
+        for (const b of this.boxes[r][c]) {
+          if (maxx > b.minx && minx < b.maxx && maxy > b.miny && miny < b.maxy && maxz > b.minz && minz < b.maxz) return true;
+        }
       }
     }
     return false;
@@ -254,9 +299,9 @@ export class GameMap {
           out.push(box(x0, -1, z0, x0 + CELL, 50, z0 + CELL, 'wall'));
           continue;
         }
-        const b = this.boxes[r][c];
-        if (!b) continue;
-        if (maxx > b.minx && minx < b.maxx && maxy > b.miny && miny < b.maxy && maxz > b.minz && minz < b.maxz) out.push(b);
+        for (const b of this.boxes[r][c]) {
+          if (maxx > b.minx && minx < b.maxx && maxy > b.miny && miny < b.maxy && maxz > b.minz && minz < b.maxz) out.push(b);
+        }
       }
     }
     return out;
@@ -285,8 +330,7 @@ export class GameMap {
     for (let i = 0; i < 200; i++) {
       if (tEnter > best) break;
       if (c < 0 || r < 0 || c >= GW || r >= GH) break;
-      const b = this.boxes[r][c];
-      if (b) {
+      for (const b of this.boxes[r][c]) {
         const res = rayBox(ox, oy, oz, dx, dy, dz, b);
         if (res && res.t < best && res.t >= 0) {
           best = res.t;

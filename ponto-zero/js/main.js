@@ -3,6 +3,7 @@ import { Server, normalizeSettings } from './server.js';
 import { GameClient } from './client.js';
 import { Hud } from './hud.js';
 import { HostNet, ClientNet } from './net.js';
+import { loadOnlineConfig, supabaseReady, SupaHostNet, SupaClientNet, LobbyWatcher } from './net-supabase.js';
 import { MODES, DIFFICULTY, TEAMS } from './config.js';
 import * as SFX from './audio.js';
 
@@ -21,6 +22,9 @@ const DEFAULT_OPTS = { sens: 1, fov: 74, volume: 0.7, crossColor: '#4dff7a', cro
 let opts = { ...DEFAULT_OPTS, ...store.get('pz-opts', {}) };
 
 let session = null; // {kind:'offline'|'host'|'client', server, client, net, code}
+let onlineCfg = null;
+let useSupa = false;
+let lobby = null;
 let createKind = 'offline';
 let roomSettings = normalizeSettings(store.get('pz-room', { mode: 'elim', botFill: 4, botDiff: 'normal', roundsToWin: 8 }));
 
@@ -53,7 +57,50 @@ function initMenu() {
   renderModeCards($('modeCards'), () => roomSettings.mode, (m) => { roomSettings = withMode(roomSettings, m); renderCreate(); });
   bindSettingsForm('create', () => roomSettings, (s) => { roomSettings = s; renderCreate(); });
   if (sala) $('codeInput').focus();
+  initOnline();
 }
+
+async function initOnline() {
+  onlineCfg = await loadOnlineConfig();
+  useSupa = supabaseReady(onlineCfg);
+  $('netInfo').innerHTML = useSupa
+    ? 'Online via <b>Supabase</b> + WebRTC'
+    : 'Online via PeerJS (configure o Supabase para a lista de salas)';
+  if (useSupa) startLobby();
+}
+
+function startLobby() {
+  if (!useSupa || lobby) return;
+  $('roomListBox').style.display = '';
+  $('roomList').innerHTML = '<div class="roomEmpty">Procurando salas…</div>';
+  lobby = new LobbyWatcher(onlineCfg, (rooms, err) => {
+    if (err || !rooms) {
+      $('roomList').innerHTML = '<div class="roomEmpty">Não foi possível listar as salas.</div>';
+      return;
+    }
+    $('roomCount').textContent = rooms.length ? `${rooms.length} aberta${rooms.length > 1 ? 's' : ''}` : '';
+    if (!rooms.length) {
+      $('roomList').innerHTML = '<div class="roomEmpty">Nenhuma sala aberta. Crie uma!</div>';
+      return;
+    }
+    $('roomList').innerHTML = rooms.map((r) => `
+      <button class="roomItem" data-code="${esc(r.code)}">
+        <b>${esc(r.host || 'Sala')}</b><span class="rc">${esc(r.code)}</span>
+        <small>${esc(MODES[r.mode]?.name || '')} · ${r.players || 1} jogador${(r.players || 1) > 1 ? 'es' : ''}${r.bots ? ` + ${r.bots} bots` : ''} · ${r.phase === 'warmup' ? 'aquecimento' : 'em jogo'}</small>
+      </button>`).join('');
+    $('roomList').querySelectorAll('.roomItem').forEach((b) => {
+      b.onclick = () => { $('codeInput').value = b.dataset.code; joinRoom(); };
+    });
+  });
+  lobby.start();
+}
+
+function stopLobby() {
+  lobby?.stop();
+  lobby = null;
+}
+
+const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // ao trocar de modo, ajusta o número de bots para algo que faça sentido
 function withMode(s, mode) {
@@ -162,14 +209,23 @@ function makeClient(send, isHost) {
   return client;
 }
 
-function startCreate() {
+async function ensureOnline() {
+  if (!onlineCfg) {
+    onlineCfg = await loadOnlineConfig();
+    useSupa = supabaseReady(onlineCfg);
+  }
+}
+
+async function startCreate() {
   SFX.initAudio();
   const name = playerName();
+  if (createKind !== 'offline') await ensureOnline();
   if (createKind === 'offline') startLocal(name, null);
   else {
     show('connecting');
     $('connectingText').textContent = 'Criando sala…';
-    const net = new HostNet({
+    const Net = useSupa ? SupaHostNet : HostNet;
+    const net = new Net({
       onOpen: (code) => startLocal(name, net, code),
       onJoin: (id) => session?.server?.join(id),
       onMessage: (id, msg) => session?.server?.receive(id, msg),
@@ -178,7 +234,7 @@ function startCreate() {
         if (!session || !session.client) errorScreen('Não foi possível criar a sala: ' + (err.type || err.message || err));
         else console.warn('peer error', err);
       },
-    });
+    }, onlineCfg);
     try { net.start(); } catch (e) { errorScreen(e.message); }
     session = { kind: 'host', net, code: null };
   }
@@ -195,7 +251,7 @@ function startLocal(name, net, code) {
     },
     broadcast: (msg, except) => {
       const str = JSON.stringify(msg);
-      if (net) net.broadcastRaw(str, except);
+      if (net) net.broadcast(msg, str, except);
       if (except !== 'host') client.receive(JSON.parse(str));
     },
     kick: (id) => net?.kick(id),
@@ -206,10 +262,22 @@ function startLocal(name, net, code) {
   server.receive('host', { t: 'join', name });
   enterGame();
   startServerLoop();
+  if (net) {
+    // anuncia a sala na lista pública (Supabase)
+    const announce = () => {
+      if (!session || session.net !== net) return;
+      let players = 0, bots = 0;
+      for (const p of server.players.values()) { if (p.bot) bots++; else players++; }
+      net.announce?.({ host: name, mode: server.settings.mode, players, bots, phase: server.phase === 'warmup' ? 'warmup' : 'live' });
+    };
+    announce();
+    session.announceTimer = setInterval(announce, 4000);
+  }
 }
 
-function joinRoom() {
+async function joinRoom() {
   SFX.initAudio();
+  await ensureOnline();
   const code = $('codeInput').value.trim().toUpperCase();
   if (code.length < 4) {
     $('codeInput').focus();
@@ -221,10 +289,16 @@ function joinRoom() {
   show('connecting');
   $('connectingText').textContent = `Conectando à sala ${code}…`;
   let client = null;
-  const net = new ClientNet({
-    onOpen: () => {
+  const Net = useSupa ? SupaClientNet : ClientNet;
+  const net = new Net({
+    onOpen: (mode) => {
       client = makeClient((msg) => net.send(msg), false);
       session.client = client;
+      session.mode = mode;
+      if (mode === 'relay') {
+        client.interpDelay = 230;
+        setTimeout(() => client.hud.toast('Conexão direta indisponível: usando o relé do Supabase'), 1500);
+      }
       net.send({ t: 'join', name });
       enterGame();
       // vigia de conexão
@@ -239,12 +313,13 @@ function joinRoom() {
     },
     onClose: (reason) => { if (session && session.client) errorScreen(reason); },
     onError: (err) => errorScreen(err.message || String(err)),
-  });
+  }, onlineCfg);
   session = { kind: 'client', net, code, client: null };
   try { net.connect(code); } catch (e) { errorScreen(e.message); }
 }
 
 function enterGame() {
+  stopLobby();
   show('gameScreen');
   session.client.start();
   history.replaceState(null, '', session.code ? `?sala=${session.code}` : location.pathname);
@@ -287,7 +362,9 @@ function endSession() {
   if (session.raf) cancelAnimationFrame(session.raf);
   session.worker?.terminate();
   if (session.watch) clearInterval(session.watch);
+  if (session.announceTimer) clearInterval(session.announceTimer);
   session = null;
+  setTimeout(startLobby, 300);
   for (const id of ['pause', 'teamSelect']) $(id).classList.remove('show');
   history.replaceState(null, '', location.pathname);
 }

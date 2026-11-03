@@ -333,8 +333,9 @@ export class Hud {
         const z = map.zones[r][col];
         if (ch === '#') continue;
         g.fillStyle = z === 'A' || z === 'B' ? '#8a5a4a' : z === 'T' ? '#7a6548' : z === 'D' ? '#4a5f7a' : '#6f6a5f';
+        if (ch === 't') g.fillStyle = '#55524b';
         if (ch === 'c' || ch === 'C') g.fillStyle = '#4b4236';
-        if (ch === 's' || ch === 'p') g.fillStyle = '#5c5a55';
+        if (ch === 's' || ch === 'p' || ch === 'q') g.fillStyle = '#5c5a55';
         g.fillRect(col * s, r * s, s, s);
       }
     }

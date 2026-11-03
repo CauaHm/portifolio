@@ -1,7 +1,8 @@
 # Ponto Zero
 
 Um FPS tático multiplayer que roda direto no navegador. É um jogo original, inspirado em shooters
-táticos de rodada: um mapa (Vila Seca), três modos, economia, bomba, granadas e bots.
+táticos de rodada: um mapa (Vila Seca, com dois pontos de bomba, três rotas, portões, galerias
+cobertas e mirante), três modos, economia, bomba, granadas e bots.
 Nenhuma arte, som ou nome foi tirado de outro jogo. Tudo é gerado no código: texturas em canvas,
 modelos com primitivas do Three.js e sons sintetizados com Web Audio.
 
@@ -33,28 +34,47 @@ reduz o dano e o tiro na cabeça multiplica por 4.
 `B` comprar · `E` (segurar) plantar/desarmar · `G` largar a arma · `Tab` placar · `Y`/`U` chat geral/do time ·
 `M` trocar de time · `Esc` menu (opções e controles do host)
 
-## Multiplayer
+## Multiplayer (Supabase + WebRTC)
 
-O multiplayer é **P2P via WebRTC** usando [PeerJS](https://peerjs.com/). Por isso funciona em
-hospedagem estática como a Vercel, sem backend próprio:
+O host é autoritativo: o navegador de quem cria a sala roda o servidor do jogo (`js/server.js`),
+com rodadas, dano, economia, bomba, granadas e bots. A conexão funciona assim:
 
-1. Quem clica em **Criar sala online** vira o *host*. O navegador dele roda o servidor autoritativo
-   (`js/server.js`): rodadas, dano, economia, bomba, granadas e bots.
-2. A sala recebe um código de 5 letras. Os amigos entram com **Entrar** + código, ou pelo link de
-   convite (`?sala=CODIGO`), que dá para copiar no menu `Esc`.
-3. Cada cliente manda a própria posição 20 vezes por segundo e os tiros com o que acertou. O host valida
-   (vivo, tem a arma, cadência, distância), aplica o dano e devolve snapshots 20 vezes por segundo.
-   Os outros jogadores aparecem interpolados com 110 ms de atraso.
-4. A sala começa em **aquecimento**: todo mundo renasce à vontade enquanto a galera entra, até o
-   host iniciar a partida no menu `Esc`. Ali o host também troca o modo, o número de bots, a
-   dificuldade e o limite.
+1. **Supabase Realtime** (o mesmo projeto Supabase dos outros jogos) faz a sinalização: troca de
+   oferta/resposta/ICE do WebRTC no canal `pontozero-v1:CODIGO` e a **lista de salas abertas** no
+   menu (presence no canal `pontozero-v1:lobby`). Não precisa criar tabela nenhuma.
+2. Os dados do jogo vão **direto entre os navegadores** por WebRTC, em dois canais: um confiável
+   (eventos, tiros, compras) e um rápido sem retransmissão (posições e snapshots a 20/s). Isso gasta
+   quase nada da cota do Supabase: só a sinalização.
+3. Se a conexão direta não fechar em 7 s (NAT restrito/CGNAT), aquele jogador passa a usar o
+   **relé pelo Supabase** a 10 atualizações/s, e o jogo avisa com uma mensagem.
+4. Sem Supabase configurado, o jogo cai para o **PeerJS** (servidor público de sinalização).
 
-Observações:
+### Como ligar o Supabase na Vercel
 
-- Se o host fechar a aba, a partida acaba para todos.
-- Se a aba do host for para segundo plano, um Web Worker mantém o servidor rodando.
-- A sinalização usa o servidor público do PeerJS (`0.peerjs.com`). Para usar um PeerServer
-  próprio: `?peerhost=meu.servidor&peerport=443&peerpath=/`.
+No projeto da Vercel (Settings → Environment Variables), crie as mesmas variáveis dos outros jogos:
+
+| Variável | Valor |
+| --- | --- |
+| `SUPABASE_URL` | `https://SEU-PROJETO.supabase.co` |
+| `SUPABASE_ANON_KEY` | a chave **anon** ou **publishable** (nunca a service_role/secret) |
+
+Também valem os nomes `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY` e
+`VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`. A função `/api/ponto-zero-config` (na raiz do repo)
+entrega esses dois valores ao jogo e recusa qualquer chave que não seja pública. Depois de salvar,
+faça um redeploy. O menu mostra "Online via Supabase + WebRTC" quando der certo.
+
+Outra opção é colar a URL e a anon key direto em `js/online-config.js`. No Supabase, o Realtime precisa
+estar ligado (ele vem ligado por padrão).
+
+### Jogando
+
+- **Criar sala online**: você vira o host e recebe um código de 5 letras. Copie o link de convite
+  (`?sala=CODIGO`) no menu `Esc`.
+- **Entrar**: digite o código ou clique na sala na lista de salas abertas.
+- A sala começa em **aquecimento** (todos renascem à vontade). O host inicia a partida e troca
+  modo, bots, dificuldade e limite pelo menu `Esc`.
+- Se o host fechar a aba, a partida acaba. Com a aba em segundo plano, um Web Worker mantém o
+  servidor rodando.
 
 ## Treino offline
 
@@ -70,7 +90,9 @@ ponto-zero/
 ├── css/game.css        visual do menu e HUD
 ├── js/
 │   ├── main.js         fluxo de telas e sessão (offline, host, cliente)
-│   ├── net.js          PeerJS: HostNet e ClientNet
+│   ├── net-supabase.js Supabase Realtime + WebRTC (host, cliente, lista de salas)
+│   ├── online-config.js URL/anon key do Supabase e servidores STUN/TURN
+│   ├── net.js          PeerJS (reserva): HostNet e ClientNet
 │   ├── server.js       servidor autoritativo (regras dos 3 modos)
 │   ├── bots.js         IA dos bots
 │   ├── client.js       render, entrada, arma local, interpolação, efeitos
@@ -84,7 +106,9 @@ ponto-zero/
 │   ├── effects.js      traçantes, partículas, marcas, explosões, fumaça
 │   ├── audio.js        sons sintetizados e áudio posicional
 │   └── config.js       armas, economia, tempos, modos
-└── vendor/             three.js 0.160.0 e PeerJS 1.5.4 (MIT)
+└── vendor/             three.js 0.160.0, supabase-js 2.45.4 e PeerJS 1.5.4 (MIT)
+
+api/ponto-zero-config.js (na raiz do portfólio): função da Vercel que lê as variáveis do Supabase
 ```
 
 ## Rodar localmente
